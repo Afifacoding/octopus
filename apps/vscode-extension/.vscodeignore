@@ -1,0 +1,11 @@
+# Exclude everything by default and opt-in required extension assets.
+**/*
+
+# Include runtime extension files.
+!out/**
+!resources/**
+!package.json
+!README.md
+!LICENSE.md
+
+.vsix-staging/**

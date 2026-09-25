@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OCTOPUS — UI/UX Style Guide (exact app styles)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ===================================================================
+   EXACT DESIGN TOKENS — copied 1:1 from src/styles.css (Tailwind v4 @theme)
+   =================================================================== */
+:root{
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.2 0.02 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 220);
+  --primary: oklch(0.52 0.09 195);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 220);
+  --secondary-foreground: oklch(0.25 0.02 220);
+  --muted: oklch(0.96 0.005 220);
+  --muted-foreground: oklch(0.5 0.02 220);
+  --accent: oklch(0.94 0.04 175);
+  --accent-foreground: oklch(0.25 0.05 195);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.92 0.008 220);
+  --input: oklch(0.92 0.008 220);
+  --ring: oklch(0.52 0.09 195);
+  --teal: oklch(0.52 0.09 195);              /* brand ≈ #008080 */
+  --teal-foreground: oklch(0.99 0 0);
+  --mint: oklch(0.92 0.13 155);              /* primary action ≈ #98FF98 */
+  --mint-foreground: oklch(0.25 0.08 180);
+  --sidebar: oklch(1 0 0);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+.dark{
+  --background: oklch(0.17 0.02 240);
+  --foreground: oklch(0.96 0.005 220);
+  --card: oklch(0.21 0.02 240);
+  --card-foreground: oklch(0.96 0.005 220);
+  --popover: oklch(0.21 0.02 240);
+  --popover-foreground: oklch(0.96 0.005 220);
+  --primary: oklch(0.72 0.13 195);
+  --primary-foreground: oklch(0.15 0.02 220);
+  --secondary: oklch(0.26 0.02 240);
+  --secondary-foreground: oklch(0.96 0.005 220);
+  --muted: oklch(0.26 0.02 240);
+  --muted-foreground: oklch(0.72 0.02 220);
+  --accent: oklch(0.29 0.05 195);
+  --accent-foreground: oklch(0.92 0.05 175);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.3 0.02 240);
+  --input: oklch(0.3 0.02 240);
+  --ring: oklch(0.72 0.13 195);
+  --teal: oklch(0.72 0.13 195);
+  --teal-foreground: oklch(0.15 0.02 220);
+  --mint: oklch(0.78 0.15 155);
+  --mint-foreground: oklch(0.15 0.05 180);
+  --sidebar: oklch(0.21 0.02 240);
+}
+
+/* ===================================================================
+   BASE — mirrors @layer base in src/styles.css
+   =================================================================== */
+*{box-sizing:border-box;border-color:var(--border);margin:0;padding:0}
+body{
+  background-color:var(--background);
+  color:var(--foreground);
+  font-family:var(--font-sans);
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit;text-decoration:none}
+ul,ol{list-style:none}
+
+/* Utility equivalents of the Tailwind classes actually used in the app */
+.muted{color:var(--muted-foreground)}
+.teal{color:var(--teal)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted-foreground)}
+.label-teal{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);font-weight:600}
+
+/* CARD — rounded-2xl border border-border bg-card p-6 */
+.card{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:24px}
+.card-sm{border:1px solid var(--border);background:var(--card);border-radius:16px;padding:20px}
+.tile{border:1px solid var(--border);background:var(--background);border-radius:12px;padding:16px}
+.dashed{border:1px dashed color-mix(in oklab,var(--teal) 40%,transparent);background:color-mix(in oklab,var(--accent) 40%,transparent);border-radius:16px;padding:20px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:12px;padding:12px 20px;font-weight:600;font-size:15px;cursor:pointer;border:1px solid transparent;transition:.15s}
+.btn-primary{background:var(--mint);color:var(--mint-foreground);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.btn-primary:hover{opacity:.9}
+.btn-secondary{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-secondary:hover{border-color:color-mix(in oklab,var(--teal) 50%,transparent)}
+.btn-ghost{background:transparent;border-color:var(--border);padding:6px 12px;font-size:14px;border-radius:8px}
+.btn-ghost:hover{background:var(--accent)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+
+/* INPUTS */
+.input{width:100%;background:var(--background);border:1px solid var(--input);border-radius:10px;
+  padding:10px 12px;font-size:14px;color:var(--foreground);outline:none;font-family:inherit}
+.input:focus{border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklab,var(--ring) 22%,transparent)}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--background);
+  border-radius:10px;padding:6px 12px;width:224px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px}
+.badge-ok{color:var(--teal);background:var(--accent)}
+.badge-bad{color:var(--destructive);background:color-mix(in oklab,var(--destructive) 10%,transparent)}
+
+/* APP SHELL */
+.shell{display:flex;min-height:100vh;background:var(--background)}
+.sidebar{width:256px;flex:0 0 256px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--card)}
+.brand{padding:16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border)}
+.logo{width:44px;height:44px;display:grid;place-items:center;overflow:hidden;border-radius:12px;background:#0b1220;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);color:#7fd7ff;font-size:11px;font-weight:700}
+.brand-name{font-weight:700;letter-spacing:-.01em;font-size:16px;line-height:1.1}
+.brand-sub{font-size:11px;color:var(--muted-foreground)}
+.switcher{margin:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--border);
+  background:var(--background);border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer}
+.switcher:hover{border-color:color-mix(in oklab,var(--teal) 50%,transparent)}
+.dot{width:8px;height:8px;border-radius:999px;background:var(--mint);display:inline-block}
+.nav{padding:8px;display:flex;flex-direction:column;gap:2px;flex:1}
+.nav a{display:flex;align-items:center;gap:12px;border-radius:10px;padding:8px 12px;font-size:14px;color:var(--muted-foreground)}
+.nav a:hover{background:color-mix(in oklab,var(--accent) 50%,transparent);color:var(--foreground)}
+.nav a.active{background:var(--accent);color:var(--accent-foreground);font-weight:500}
+.side-note{margin:12px;border-radius:10px;background:color-mix(in oklab,var(--accent) 40%,transparent);padding:12px;font-size:12px;color:var(--muted-foreground)}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.header{height:64px;border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--card) 60%,transparent);
+  backdrop-filter:blur(8px);padding:0 32px;display:flex;align-items:center;justify-content:space-between;gap:16px;position:sticky;top:0;z-index:10}
+.header h1{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.avatar{width:36px;height:36px;border-radius:999px;background:var(--teal);color:var(--teal-foreground);
+  display:grid;place-items:center;font-size:14px;font-weight:600}
+.content{flex:1;padding:32px}
+.wrap{max-width:1152px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+
+/* TIMELINE (dashboard + vault) */
+.timeline{border-left:2px solid var(--border);margin-left:12px;padding-top:8px;display:flex;flex-direction:column;gap:20px}
+.timeline li{position:relative;padding-left:24px}
+.timeline li::before{content:"";position:absolute;left:-9px;top:6px;width:16px;height:16px;border-radius:999px;
+  background:var(--mint);border:2px solid var(--card)}
+.row-title{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+
+/* FLOATING AI BUBBLE — OctoHelp */
+.fab{position:fixed;right:24px;bottom:24px;width:56px;height:56px;border-radius:999px;background:var(--teal);
+  color:var(--teal-foreground);display:grid;place-items:center;box-shadow:0 10px 24px rgba(0,0,0,.18);cursor:pointer}
+
+/* AUTH SCREEN */
+.auth{min-height:100vh;display:grid;place-items:center;padding:24px}
+.auth-card{width:100%;max-width:400px;border:1px solid var(--border);background:var(--card);border-radius:16px;padding:28px;
+  display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 30px rgba(0,0,0,.05)}
+
+/* SWATCHES (doc only) */
+.sw{height:64px;border-radius:12px;border:1px solid var(--border)}
+.sec{max-width:1152px;margin:0 auto 32px;padding:0 24px}
+h2.doc{font-size:20px;font-weight:600;margin:32px 0 12px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--muted);padding:2px 6px;border-radius:6px}
+
+@media (max-width:768px){
+  .sidebar{display:none}
+  .content{padding:16px}
+  .header{padding:0 16px}
+  .grid3,.grid4{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= LIVE APP SHELL (exact structure of AppShell.tsx) ================ -->
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">OCTO</div>
+      <div>
+        <div class="brand-name">OCTOPUS</div>
+        <div class="brand-sub">by Ghost Protocol</div>
+      </div>
+    </div>
+
+    <button class="switcher">
+      <span style="display:flex;align-items:center;gap:8px;min-width:0">
+        <span class="dot"></span><span style="font-weight:500">Surakshini Setu</span>
+      </span>
+      <span class="muted">▾</span>
+    </button>
+
+    <nav class="nav">
+      <a class="active" href="#">▦ Dashboard</a>
+      <a href="#">🕘 Vault History</a>
+      <a href="#">📘 Blueprint</a>
+      <a href="#">🧩 Integration Guide</a>
+      <a href="#">🛟 Support</a>
+      <a href="#">⚙ Settings</a>
+    </nav>
+
+    <div class="side-note">
+      <div style="color:var(--foreground);font-weight:500;margin-bottom:4px">Vault encrypted</div>
+      Snapshots are hashed with SHA-256 and stored per account.
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="header">
+      <div>
+        <div class="eyebrow">Surakshini Setu</div>
+        <h1>Dashboard</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="search"><span class="muted">⌕</span><input class="input" style="border:0;padding:0;background:transparent" placeholder="Search snapshots…" /></div>
+        <button class="btn btn-ghost">☾</button>
+        <button class="btn btn-ghost">⇥ Sign out</button>
+        <div class="avatar">SA</div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="wrap">
+
+        <!-- Action panel -->
+        <section class="card" style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+          <div>
+            <div class="label-teal">Control Panel</div>
+            <h2 style="font-size:20px;font-weight:600;margin-top:4px">Manage Surakshini Setu</h2>
+            <p class="muted" style="font-size:14px;margin-top:4px">Capture a new snapshot or roll back to a verified version.</p>
+          </div>
+          <div style="display:flex;gap:12px">
+            <button class="btn btn-primary">📷 Snapshot Now</button>
+            <button class="btn btn-secondary"><span class="teal">↺</span> Instant Rollback</button>
+          </div>
+        </section>
+
+        <!-- Stats -->
+        <div class="grid3">
+          <div class="card-sm"><div class="eyebrow">Total Snapshots</div><div style="font-size:24px;font-weight:600;margin-top:4px">12</div><div class="muted" style="font-size:12px">2 project(s)</div></div>
+          <div class="card-sm"><div class="eyebrow">Last Snapshot</div><div style="font-size:24px;font-weight:600;margin-top:4px">v1.4</div><div class="muted" style="font-size:12px">8 Aug 2026, 12:40</div></div>
+          <div class="card-sm"><div class="eyebrow">Vault Size</div><div class="teal" style="font-size:24px;font-weight:600;margin-top:4px">18.2 MB</div><div class="muted" style="font-size:12px">Encrypted at rest</div></div>
+        </div>
+
+        <!-- Blueprint card -->
+        <section class="card">
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+            <div><h3 style="font-weight:600">Project Blueprint</h3><p class="muted" style="font-size:14px">Derived from v1.4 · 214 files</p></div>
+            <a class="teal" style="font-size:14px;font-weight:500" href="#">Open blueprint →</a>
+          </div>
+          <div class="grid4">
+            <div class="tile"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="width:32px;height:32px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:var(--teal)">▤</span><b style="font-size:14px">Frontend</b></div><ul class="muted" style="font-size:12px"><li>React 19</li><li>Tailwind v4</li></ul></div>
+            <div class="tile"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="width:32px;height:32px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:var(--teal)">⛁</span><b style="font-size:14px">Backend</b></div><ul class="muted" style="font-size:12px"><li>TanStack server fns</li></ul></div>
+            <div class="tile"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="width:32px;height:32px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:var(--teal)">🗄</span><b style="font-size:14px">Database</b></div><ul class="muted" style="font-size:12px"><li>Postgres · RLS</li></ul></div>
+            <div class="tile"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="width:32px;height:32px;border-radius:10px;background:var(--accent);display:grid;place-items:center;color:var(--teal)">🔑</span><b style="font-size:14px">Env / Secrets</b></div><ul class="muted mono" style="font-size:12px"><li>API_KEY · secured</li></ul></div>
+          </div>
+        </section>
+
+        <!-- Timeline -->
+        <section class="card">
+          <div style="display:flex;justify-content:space-between;margin-bottom:16px">
+            <div><h3 style="font-weight:600">Snapshot Timeline</h3><p class="muted" style="font-size:14px">Chronological history with integrity checks</p></div>
+            <a class="teal" style="font-size:14px;font-weight:500" href="#">View all →</a>
+          </div>
+          <ol class="timeline">
+            <li>
+              <div class="row-title">
+                <span style="font-weight:600">v1.4</span>
+                <span class="muted" style="font-size:14px">8 Aug 2026, 12:40</span>
+                <span class="badge badge-ok">✔ Integrity Verified</span>
+                <span class="teal" style="font-size:11px;font-weight:500;margin-left:auto">View code →</span>
+              </div>
+              <div class="muted" style="font-size:14px;margin-top:4px">Pre-demo capture · saadat · 214 files · 6.1 MB</div>
+            </li>
+            <li>
+              <div class="row-title">
+                <span style="font-weight:600">v1.3</span>
+                <span class="muted" style="font-size:14px">7 Aug 2026, 19:02</span>
+                <span class="badge badge-bad">⚠ Unverified</span>
+                <span class="teal" style="font-size:11px;font-weight:500;margin-left:auto">View code →</span>
+              </div>
+              <div class="muted" style="font-size:14px;margin-top:4px">Auth refactor · saadat · 208 files · 5.8 MB</div>
+            </li>
+          </ol>
+        </section>
+
+        <div class="dashed" style="display:flex;gap:12px;align-items:flex-start">
+          <span class="teal">✦</span>
+          <div style="font-size:14px">
+            <div style="font-weight:500">Tip: Install the OCTOPUS VS Code extension</div>
+            <div class="muted">Snapshot directly from your editor's status bar. <a class="teal" style="font-weight:500" href="#">Setup guide →</a></div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+<div class="fab">💬</div>
+
+<!-- ================= DOC SECTIONS ================= -->
+<div class="sec">
+  <h2 class="doc">Auth screen pattern (login / signup / reset)</h2>
+  <div class="auth" style="min-height:auto;padding:0">
+    <div class="auth-card">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div class="logo" style="width:56px;height:56px">OCTO</div>
+        <div class="brand-name" style="font-size:18px">OCTOPUS</div>
+        <div class="brand-sub">Your App's Black Box Recorder</div>
+      </div>
+      <label class="eyebrow">Email</label><input class="input" placeholder="you@company.com" />
+      <label class="eyebrow">Master password</label><input class="input" type="password" placeholder="••••••••" />
+      <label class="eyebrow">6-digit code (if 2FA enabled)</label><input class="input mono" placeholder="123456" />
+      <button class="btn btn-primary" style="justify-content:center">Sign in</button>
+      <div class="muted" style="font-size:13px;text-align:center">No account? <a class="teal">Create one</a> · <a class="teal">Forgot password?</a></div>
+    </div>
+  </div>
+
+  <h2 class="doc">Color swatches</h2>
+  <div class="grid4">
+    <div><div class="sw" style="background:var(--background)"></div><code>--background</code></div>
+    <div><div class="sw" style="background:var(--card)"></div><code>--card</code></div>
+    <div><div class="sw" style="background:var(--teal)"></div><code>--teal #008080</code></div>
+    <div><div class="sw" style="background:var(--mint)"></div><code>--mint #98FF98</code></div>
+    <div><div class="sw" style="background:var(--accent)"></div><code>--accent</code></div>
+    <div><div class="sw" style="background:var(--muted)"></div><code>--muted</code></div>
+    <div><div class="sw" style="background:var(--border)"></div><code>--border</code></div>
+    <div><div class="sw" style="background:var(--destructive)"></div><code>--destructive</code></div>
+  </div>
+
+  <h2 class="doc">Type scale &amp; rules used in the app</h2>
+  <ul class="muted" style="font-size:14px;display:flex;flex-direction:column;gap:6px">
+    <li>Font: <b>Inter</b> (var(--font-sans)); antialiased; no serif anywhere.</li>
+    <li>Page title 18px/600 · section heading 20px/600 · card heading 16px/600 · body 14px · meta 12px · eyebrow 11px uppercase tracking-wide.</li>
+    <li>Radii: buttons/inputs 10–12px, cards 16px (rounded-2xl), pills 999px. Base <code>--radius: 0.75rem</code>.</li>
+    <li>Spacing: page padding 32px desktop / 16px mobile; card padding 24px; grid gap 24px; content max-width 1152px.</li>
+    <li>Elevation: almost flat — 1px borders + backdrop-blur header; shadows only on primary button and FAB.</li>
+    <li>Motion: <code>transition</code> 150ms on hover for buttons, nav items and cards; spinners use <code>animate-spin</code>.</li>
+    <li>Dark mode: <code>.dark</code> class on <code>&lt;html&gt;</code>, persisted in localStorage, toggled from header.</li>
+    <li>Rule: never hardcode colors — always the semantic tokens above.</li>
+  </ul>
+</div>
+
+<script>
+  // dark-mode demo toggle, same mechanism as ThemeToggle.tsx
+  document.querySelectorAll('.btn-ghost').forEach(b=>{
+    if(b.textContent.trim()==='☾') b.onclick=()=>document.documentElement.classList.toggle('dark');
+  });
+</script>
+</body>
+</html>

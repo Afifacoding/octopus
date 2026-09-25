@@ -1,0 +1,262 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum OtpPurpose {
+  EMAIL_VERIFICATION
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProjectColor {
+  BLUE
+  PURPLE
+  PINK
+  RED
+  ORANGE
+  YELLOW
+  GREEN
+  TEAL
+  CYAN
+  GRAY
+}
+
+enum SnapshotStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SnapshotCaptureSource {
+  EXTENSION
+  WEB
+  API
+}
+
+enum BlueprintStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SecretCategory {
+  API_KEY
+  ACCESS_TOKEN
+  SECRET_KEY
+  PRIVATE_KEY
+  DATABASE_URL
+  JWT
+  OAUTH_CLIENT_SECRET
+  CLOUD_CREDENTIAL
+  WEBHOOK_SECRET
+  PASSWORD
+  GENERIC_SECRET
+}
+
+enum SecretConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SecretDetectionStatus {
+  OPEN
+  IGNORED
+  IMPORTED
+}
+
+model User {
+  id              String              @id @default(cuid())
+  username        String              @unique
+  email           String              @unique
+  passwordHash    String
+  status          UserStatus          @default(PENDING)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  otpChallenges   EmailOtpChallenge[]
+  sessions        AuthSession[]
+  auditLogs       AuditLog[]
+  projects        Project[]
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  ownerId     String
+  name        String
+  description String?
+  color       ProjectColor?
+  status      ProjectStatus @default(ACTIVE)
+  archivedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  snapshots   Snapshot[]
+  secrets     Secret[]
+
+  @@index([ownerId, status, updatedAt(sort: Desc)])
+  @@index([ownerId, name])
+}
+
+model Snapshot {
+  id                  String                @id @default(cuid())
+  projectId           String
+  status              SnapshotStatus        @default(PENDING)
+  captureSource       SnapshotCaptureSource @default(API)
+  clientName          String?
+  clientVersion       String?
+  archiveStorageKey   String?
+  archiveContentType  String?
+  archiveSizeBytes    Int?
+  fileCount           Int?
+  directoryCount      Int?
+  integrityAlgorithm  String?
+  integrityHash       String?
+  failureCode         String?
+  failureReason       String?
+  captureMetadata     Json?
+  processedAt         DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  project             Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blueprint           Blueprint?
+  secretDetections    SecretDetection[]
+  sourcedSecrets      Secret[]              @relation("SecretSourceSnapshot")
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([projectId, status, updatedAt(sort: Desc)])
+}
+
+model Blueprint {
+  id                    String          @id @default(cuid())
+  snapshotId            String          @unique
+  status                BlueprintStatus @default(PENDING)
+  projectType           String?
+  detectedFrameworks    Json?
+  detectedLanguages     Json?
+  importantConfigFiles  Json?
+  dependencyMetadata    Json?
+  entryPoints           Json?
+  detectedCommands      Json?
+  environmentReferences Json?
+  summary               String?
+  failureCode           String?
+  failureReason         String?
+  processedAt           DateTime?
+  metadata              Json?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  snapshot              Snapshot        @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt(sort: Desc)])
+}
+
+model Secret {
+  id                 String           @id @default(cuid())
+  projectId          String
+  sourceSnapshotId   String?
+  sourceDetectionId  String?
+  label              String
+  category           SecretCategory
+  confidence         SecretConfidence
+  maskedValue        String
+  encryptedValue     String
+  encryptionIv       String
+  encryptionAuthTag  String
+  encryptionVersion  String           @default("v1")
+  sourceFilePath     String?
+  sourceLineNumber   Int?
+  metadata           Json?
+  lastRevealedAt     DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceSnapshot     Snapshot?        @relation("SecretSourceSnapshot", fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+  sourceDetection    SecretDetection? @relation(fields: [sourceDetectionId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, category, updatedAt(sort: Desc)])
+}
+
+model SecretDetection {
+  id               String                @id @default(cuid())
+  snapshotId       String
+  category         SecretCategory
+  confidence       SecretConfidence
+  status           SecretDetectionStatus @default(OPEN)
+  detectionRule    String
+  sourceFilePath   String
+  sourceLineNumber Int?
+  maskedPreview    String
+  fingerprint      String
+  metadata         Json?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  snapshot         Snapshot              @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  sourcedSecrets   Secret[]
+
+  @@unique([snapshotId, fingerprint])
+  @@index([snapshotId, status, updatedAt(sort: Desc)])
+}
+
+model EmailOtpChallenge {
+  id                String     @id @default(cuid())
+  userId            String
+  purpose           OtpPurpose @default(EMAIL_VERIFICATION)
+  otpHash           String
+  expiresAt         DateTime
+  attemptCount      Int        @default(0)
+  maxAttempts       Int
+  resendAvailableAt DateTime
+  consumedAt        DateTime?
+  invalidatedAt     DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt(sort: Desc)])
+}
+
+model AuthSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action, createdAt(sort: Desc)])
+}

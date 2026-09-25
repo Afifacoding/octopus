@@ -1,0 +1,61 @@
+:root {
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.2 0.02 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 220);
+  --primary: oklch(0.52 0.09 195);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 220);
+  --secondary-foreground: oklch(0.25 0.02 220);
+  --muted: oklch(0.96 0.005 220);
+  --muted-foreground: oklch(0.5 0.02 220);
+  --accent: oklch(0.94 0.04 175);
+  --accent-foreground: oklch(0.25 0.05 195);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.92 0.008 220);
+  --input: oklch(0.92 0.008 220);
+  --ring: oklch(0.52 0.09 195);
+  --teal: oklch(0.52 0.09 195);
+  --teal-foreground: oklch(0.99 0 0);
+  --mint: oklch(0.92 0.13 155);
+  --mint-foreground: oklch(0.25 0.08 180);
+  --sidebar: oklch(1 0 0);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark {
+  --background: oklch(0.17 0.02 240);
+  --foreground: oklch(0.96 0.005 220);
+  --card: oklch(0.21 0.02 240);
+  --card-foreground: oklch(0.96 0.005 220);
+  --popover: oklch(0.21 0.02 240);
+  --popover-foreground: oklch(0.96 0.005 220);
+  --primary: oklch(0.72 0.13 195);
+  --primary-foreground: oklch(0.15 0.02 220);
+  --secondary: oklch(0.26 0.02 240);
+  --secondary-foreground: oklch(0.96 0.005 220);
+  --muted: oklch(0.26 0.02 240);
+  --muted-foreground: oklch(0.72 0.02 220);
+  --accent: oklch(0.29 0.05 195);
+  --accent-foreground: oklch(0.92 0.05 175);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.3 0.02 240);
+  --input: oklch(0.3 0.02 240);
+  --ring: oklch(0.72 0.13 195);
+  --teal: oklch(0.72 0.13 195);
+  --teal-foreground: oklch(0.15 0.02 220);
+  --mint: oklch(0.78 0.15 155);
+  --mint-foreground: oklch(0.15 0.05 180);
+  --sidebar: oklch(0.21 0.02 240);
+}

@@ -1,0 +1,206 @@
+{
+  "name": "octopus-vscode-extension",
+  "displayName": "OCTOPUS",
+  "description": "One-click project snapshot capture from VS Code to OCTOPUS.",
+  "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "publisher": "octopus-publisher-placeholder",
+  "icon": "resources/octopus.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/octopus/repository-placeholder"
+  },
+  "homepage": "https://octopus.example.com",
+  "bugs": {
+    "url": "https://github.com/octopus/repository-placeholder/issues"
+  },
+  "keywords": [
+    "octopus",
+    "snapshot",
+    "backup",
+    "workspace",
+    "project-capture",
+    "developer-tools"
+  ],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "activationEvents": [
+    "onCommand:octopus.openControlPanel",
+    "onCommand:octopus.saveSnapshot",
+    "onCommand:octopus.connectAccount",
+    "onCommand:octopus.selectProject",
+    "onCommand:octopus.openWebApp",
+    "onView:octopus.workspaceView"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "octopus.openControlPanel",
+        "title": "OCTOPUS: Open Control Panel"
+      },
+      {
+        "command": "octopus.saveSnapshot",
+        "title": "OCTOPUS: Save Snapshot"
+      },
+      {
+        "command": "octopus.connectAccount",
+        "title": "OCTOPUS: Connect Account"
+      },
+      {
+        "command": "octopus.selectProject",
+        "title": "OCTOPUS: Select Project"
+      },
+      {
+        "command": "octopus.openWebApp",
+        "title": "OCTOPUS: Open Web App"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "octopus.saveSnapshot",
+          "when": "view == octopus.workspaceView",
+          "group": "navigation"
+        },
+        {
+          "command": "octopus.connectAccount",
+          "when": "view == octopus.workspaceView",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OCTOPUS",
+      "properties": {
+        "octopus.apiBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:4000/api/v1",
+          "description": "Custom OCTOPUS API URL used when environment is set to custom"
+        },
+        "octopus.environment": {
+          "type": "string",
+          "enum": [
+            "development",
+            "production",
+            "custom"
+          ],
+          "default": "development",
+          "description": "Select which OCTOPUS environment URLs the extension should use"
+        },
+        "octopus.developmentApiBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:4000/api/v1",
+          "description": "Development OCTOPUS API URL"
+        },
+        "octopus.productionApiBaseUrl": {
+          "type": "string",
+          "default": "https://OCTOPUS_API_BASE_URL_PLACEHOLDER/api/v1",
+          "description": "Production OCTOPUS API URL placeholder. Replace with real production backend URL before publishing."
+        },
+        "octopus.webBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "Custom OCTOPUS web URL used when environment is set to custom"
+        },
+        "octopus.developmentWebBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:5173",
+          "description": "Development OCTOPUS web application URL"
+        },
+        "octopus.productionWebBaseUrl": {
+          "type": "string",
+          "default": "https://OCTOPUS_WEB_BASE_URL_PLACEHOLDER",
+          "description": "Production OCTOPUS web URL placeholder. Replace before publishing."
+        },
+        "octopus.requestTimeoutMs": {
+          "type": "number",
+          "default": 45000,
+          "minimum": 5000,
+          "description": "HTTP timeout in milliseconds for OCTOPUS API requests"
+        },
+        "octopus.capture.maxUploadBytes": {
+          "type": "number",
+          "default": 700000,
+          "minimum": 100000,
+          "description": "Maximum packaged archive size in bytes before upload"
+        },
+        "octopus.capture.maxFiles": {
+          "type": "number",
+          "default": 50000,
+          "minimum": 100,
+          "description": "Maximum number of files captured from workspace"
+        },
+        "octopus.capture.maxDirectories": {
+          "type": "number",
+          "default": 10000,
+          "minimum": 10,
+          "description": "Maximum number of directories captured from workspace"
+        },
+        "octopus.capture.maxTotalBytes": {
+          "type": "number",
+          "default": 150000000,
+          "minimum": 1000000,
+          "description": "Maximum scanned workspace size in bytes before packaging"
+        },
+        "octopus.capture.excludeSensitiveFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Exclude known sensitive files from capture"
+        },
+        "octopus.capture.excludePatterns": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional glob patterns to exclude from workspace capture"
+        },
+        "octopus.capture.analyzeSecrets": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable backend static secret detection after snapshot capture"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "octopus",
+          "title": "OCTOPUS",
+          "icon": "resources/octopus.svg"
+        }
+      ]
+    },
+    "views": {
+      "octopus": [
+        {
+          "id": "octopus.workspaceView",
+          "name": "Workspace"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run --exclude out/**",
+    "package:vsix": "npm run build && node scripts/package-vsix.mjs"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.6.1",
+    "vscode": "^1.1.37"
+  }
+}
