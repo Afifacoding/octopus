@@ -10,39 +10,37 @@ export function getRecipientDomain(email: string) {
   return separatorIndex >= 0 ? email.slice(separatorIndex + 1).toLowerCase() : 'unknown';
 }
 
-export function getSafeSmtpErrorMetadata(error: unknown): Record<string, unknown> {
+export function getSafeBrevoErrorMetadata(error: unknown): Record<string, unknown> {
   if (!error || typeof error !== 'object') {
     return {};
   }
 
-  const smtpError = error as {
+  const brevoError = error as {
     code?: unknown;
-    command?: unknown;
-    responseCode?: unknown;
+    httpStatus?: unknown;
+    providerErrorCode?: unknown;
   };
 
   const metadata: Record<string, unknown> = {};
 
-  if (typeof smtpError.code === 'string' && /^[A-Z0-9_-]{1,40}$/iu.test(smtpError.code)) {
-    metadata.smtpErrorCode = smtpError.code;
+  if (typeof brevoError.code === 'string' && /^[A-Z0-9_-]{1,40}$/iu.test(brevoError.code)) {
+    metadata.errorCode = brevoError.code;
   }
 
   if (
-    typeof smtpError.command === 'string' &&
-    /^(?:CONN|AUTH(?: (?:PLAIN|LOGIN|XOAUTH2|CRAM-MD5))?|EHLO|HELO|STARTTLS|MAIL FROM|RCPT TO|DATA|QUIT|RSET)$/iu.test(
-      smtpError.command,
-    )
+    typeof brevoError.httpStatus === 'number' &&
+    Number.isInteger(brevoError.httpStatus) &&
+    brevoError.httpStatus >= 100 &&
+    brevoError.httpStatus <= 599
   ) {
-    metadata.smtpCommand = smtpError.command;
+    metadata.httpStatus = brevoError.httpStatus;
   }
 
   if (
-    typeof smtpError.responseCode === 'number' &&
-    Number.isInteger(smtpError.responseCode) &&
-    smtpError.responseCode >= 100 &&
-    smtpError.responseCode <= 599
+    typeof brevoError.providerErrorCode === 'string' &&
+    /^[A-Z0-9_-]{1,64}$/iu.test(brevoError.providerErrorCode)
   ) {
-    metadata.smtpResponseCode = smtpError.responseCode;
+    metadata.providerErrorCode = brevoError.providerErrorCode;
   }
 
   return metadata;

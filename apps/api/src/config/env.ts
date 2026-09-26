@@ -27,10 +27,7 @@ const envSchema = z.object({
   AUTH_OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().max(10).default(5),
   AUTH_OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
   SECRET_VAULT_SESSION_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(300),
-  EMAIL_SMTP_HOST: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-  EMAIL_SMTP_PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
-  EMAIL_SMTP_USER: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
-  EMAIL_SMTP_PASS: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  BREVO_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   EMAIL_FROM: z.preprocess(emptyToUndefined, z.string().email().optional()),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
@@ -55,18 +52,11 @@ if (!parsed.success) {
 const envData = parsed.data;
 
 if (envData.NODE_ENV === 'production') {
-  if (!envData.EMAIL_SMTP_HOST || !envData.EMAIL_SMTP_PORT || !envData.EMAIL_FROM) {
+  if (!envData.BREVO_API_KEY || !envData.EMAIL_FROM) {
     throw new Error(
-      'Environment validation failed: EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, and EMAIL_FROM are required in production',
+      'Environment validation failed: BREVO_API_KEY and EMAIL_FROM are required in production',
     );
   }
-}
-
-const hasSmtpUser = typeof envData.EMAIL_SMTP_USER === 'string';
-const hasSmtpPass = typeof envData.EMAIL_SMTP_PASS === 'string';
-
-if (hasSmtpUser !== hasSmtpPass) {
-  throw new Error('Environment validation failed: EMAIL_SMTP_USER and EMAIL_SMTP_PASS must be provided together');
 }
 
 const vaultKey = envData.VAULT_ENCRYPTION_KEY;

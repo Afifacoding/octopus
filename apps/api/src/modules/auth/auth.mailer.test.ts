@@ -2,37 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type EnvOverrides = {
   NODE_ENV?: 'development' | 'test' | 'production';
-  EMAIL_SMTP_HOST?: string;
-  EMAIL_SMTP_PORT?: number;
-  EMAIL_SMTP_USER?: string;
-  EMAIL_SMTP_PASS?: string;
+  BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
   AUTH_OTP_TTL_MINUTES?: number;
 };
 
-async function loadMailerForTest(
-  envOverrides: EnvOverrides,
-  sendMailImpl?: () => Promise<void>,
-  verifyImpl?: () => Promise<void>,
-) {
+type MockResponse = {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+};
+
+const successfulResponse = (): MockResponse => ({
+  ok: true,
+  status: 201,
+  json: async () => ({}),
+});
+
+async function loadMailerForTest(envOverrides: EnvOverrides, fetchImpl?: typeof fetch) {
   vi.resetModules();
 
-  const sendMail = vi.fn(async () => {
-    if (sendMailImpl) {
-      await sendMailImpl();
-    }
-  });
-
-  const verify = vi.fn(async () => {
-    if (verifyImpl) {
-      await verifyImpl();
-    }
-  });
-
-  const createTransport = vi.fn((_options: unknown) => ({
-    sendMail,
-    verify,
-  }));
+  const fetchMock = vi.fn(fetchImpl ?? (async () => successfulResponse() as Response));
+  vi.stubGlobal('fetch', fetchMock);
 
   const logs: Array<{ level: 'info' | 'error'; bindings: Record<string, unknown>; message: string }> = [];
   const logger = {
@@ -43,12 +34,6 @@ async function loadMailerForTest(
       logs.push({ level: 'error', bindings, message });
     }),
   };
-
-  vi.doMock('nodemailer', () => ({
-    default: {
-      createTransport,
-    },
-  }));
 
   vi.doMock('../../config/env.js', () => ({
     env: {
@@ -62,15 +47,13 @@ async function loadMailerForTest(
 
   return {
     AuthMailer: mod.AuthMailer,
-    sendMail,
-    verify,
-    createTransport,
+    fetchMock,
     logger,
     logs,
   };
 }
 
-describe('AuthMailer', () => {
+describe('AuthMailer via Brevo HTTPS API', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.restoreAllMocks();
@@ -78,139 +61,71 @@ describe('AuthMailer', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it('uses SMTP when configured', async () => {
-    const { AuthMailer, sendMail, createTransport, verify, logger, logs } = await loadMailerForTest({
-      NODE_ENV: 'development',
-      EMAIL_SMTP_HOST: 'smtp.example.com',
-      EMAIL_SMTP_PORT: 587,
-      EMAIL_SMTP_USER: 'user',
-      EMAIL_SMTP_PASS: 'pass',
+  it('sends the existing OTP email using the Brevo API and logs no sensitive values', async () => {
+    const apiKey = 'brevo-api-key-sensitive';
+    const otp = 'otp-sensitive-value';
+    const recipient = 'private.recipient@gmail.com';
+    const { AuthMailer, fetchMock, logger, logs } = await loadMailerForTest({
+      NODE_ENV: 'production',
+      BREVO_API_KEY: apiKey,
       EMAIL_FROM: 'no-reply@example.com',
+      AUTH_OTP_TTL_MINUTES: 10,
     });
 
     const mailer = new AuthMailer(logger);
     const result = await mailer.sendEmailVerificationOtp({
-      email: 'private.recipient@gmail.com',
+      email: recipient,
       username: 'alice',
-      otp: 'otp-sensitive-value',
+      otp,
     });
 
-    expect(createTransport).toHaveBeenCalledTimes(1);
-    expect(sendMail).toHaveBeenCalledTimes(1);
-    expect(createTransport).toHaveBeenCalledWith(expect.objectContaining({
-      secure: false,
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000,
-    }));
-    expect(verify).not.toHaveBeenCalled();
     expect(result).toEqual({ otpSent: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.brevo.com/v3/smtp/email');
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('api-key')).toBe(apiKey);
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(JSON.parse(String(init.body))).toEqual({
+      sender: { email: 'no-reply@example.com' },
+      to: [{ email: recipient }],
+      subject: 'OCTOPUS verification code',
+      htmlContent: `<p>Hello alice,</p><p>Your OCTOPUS verification code is <strong>${otp}</strong>.</p><p>It expires in 10 minutes.</p>`,
+    });
     expect(logs.map(({ message }) => message)).toEqual([
       'OTP email send started',
       'OTP email send completed',
     ]);
+
     const serializedLogs = JSON.stringify(logs);
+    expect(serializedLogs).toContain('provider":"brevo');
+    expect(serializedLogs).toContain('transport":"https');
     expect(serializedLogs).toContain('gmail.com');
+    expect(serializedLogs).not.toContain(apiKey);
+    expect(serializedLogs).not.toContain(otp);
     expect(serializedLogs).not.toContain('private.recipient');
-    expect(serializedLogs).not.toContain('otp-sensitive-value');
-    expect(serializedLogs).not.toContain('pass');
+    expect(serializedLogs).not.toContain('Hello alice');
   });
 
-  it('skips SMTP in development when not configured and returns fallback OTP', async () => {
-    const { AuthMailer, sendMail, createTransport } = await loadMailerForTest({
-      NODE_ENV: 'development',
-      AUTH_OTP_TTL_MINUTES: 10,
-    });
-
-    const mailer = new AuthMailer();
-    const result = await mailer.sendEmailVerificationOtp({
-      email: 'alice@gmail.com',
-      username: 'alice',
-      otp: '654321',
-    });
-
-    expect(createTransport).toHaveBeenCalledTimes(0);
-    expect(sendMail).toHaveBeenCalledTimes(0);
-    expect(result).toEqual({
-      otpSent: true,
-      developmentOtp: '654321',
-      deliveryMode: 'DEVELOPMENT_FALLBACK',
-    });
-  });
-
-  it('falls back in development when SMTP send fails', async () => {
-    const { AuthMailer, sendMail, createTransport } = await loadMailerForTest(
-      {
-        NODE_ENV: 'development',
-        EMAIL_SMTP_HOST: 'smtp.example.com',
-        EMAIL_SMTP_PORT: 587,
-        EMAIL_SMTP_USER: 'user',
-        EMAIL_SMTP_PASS: 'pass',
-        EMAIL_FROM: 'no-reply@example.com',
-      },
-      async () => {
-        throw new Error('smtp unavailable');
-      },
-    );
-
-    const mailer = new AuthMailer();
-    const result = await mailer.sendEmailVerificationOtp({
-      email: 'alice@gmail.com',
-      username: 'alice',
-      otp: '111222',
-    });
-
-    expect(createTransport).toHaveBeenCalledTimes(1);
-    expect(sendMail).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({
-      otpSent: true,
-      developmentOtp: '111222',
-      deliveryMode: 'DEVELOPMENT_FALLBACK',
-    });
-  });
-
-  it('enforces SMTP in production when missing', async () => {
-    const { AuthMailer } = await loadMailerForTest({
-      NODE_ENV: 'production',
-      AUTH_OTP_TTL_MINUTES: 10,
-    });
-
-    const mailer = new AuthMailer();
-
-    await expect(
-      mailer.sendEmailVerificationOtp({
-        email: 'alice@gmail.com',
-        username: 'alice',
-        otp: '000111',
-      }),
-    ).rejects.toMatchObject({ code: 'SMTP_NOT_CONFIGURED' });
-  });
-
-  it('logs safe SMTP error metadata and preserves the generic production error', async () => {
+  it('logs safe Brevo API failure metadata and returns the generic production error', async () => {
+    const apiKey = 'brevo-api-key-sensitive';
     const { AuthMailer, logger, logs } = await loadMailerForTest(
       {
         NODE_ENV: 'production',
-        EMAIL_SMTP_HOST: 'smtp.example.com',
-        EMAIL_SMTP_PORT: 587,
-        EMAIL_SMTP_USER: 'smtp-user-sensitive',
-        EMAIL_SMTP_PASS: 'smtp-password-sensitive',
+        BREVO_API_KEY: apiKey,
         EMAIL_FROM: 'no-reply@example.com',
       },
-      async () => {
-        const error = new Error('smtp-password-sensitive otp-sensitive-value private.recipient@gmail.com') as Error & {
-          code: string;
-          command: string;
-          response: string;
-          responseCode: number;
-        };
-        error.code = 'EAUTH';
-        error.command = 'AUTH PLAIN smtp-password-sensitive';
-        error.response = 'Rejected otp-sensitive-value';
-        error.responseCode = 535;
-        throw error;
-      },
+      async () => ({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          code: 'invalid_parameter',
+          message: `Rejected ${apiKey} otp-sensitive-value private.recipient@gmail.com`,
+        }),
+      }) as Response,
     );
 
     const mailer = new AuthMailer(logger);
@@ -230,31 +145,33 @@ describe('AuthMailer', () => {
       level: 'error',
       message: 'OTP email send failed',
       bindings: {
-        smtpErrorCode: 'EAUTH',
-        smtpResponseCode: 535,
+        provider: 'brevo',
+        transport: 'https',
         recipientDomain: 'gmail.com',
+        httpStatus: 401,
+        providerErrorCode: 'invalid_parameter',
       },
     });
     const serializedLogs = JSON.stringify(logs);
-    expect(serializedLogs).not.toContain('smtp-user-sensitive');
-    expect(serializedLogs).not.toContain('smtp-password-sensitive');
+    expect(serializedLogs).not.toContain(apiKey);
     expect(serializedLogs).not.toContain('otp-sensitive-value');
     expect(serializedLogs).not.toContain('private.recipient');
     expect(serializedLogs).not.toContain('Rejected');
   });
 
-  it('logs a distinct timeout and preserves the generic production error', async () => {
+  it('aborts the HTTPS request after ten seconds and keeps the generic production error', async () => {
     vi.useFakeTimers();
+    const apiKey = 'brevo-api-key-sensitive';
     const { AuthMailer, logger, logs } = await loadMailerForTest(
       {
         NODE_ENV: 'production',
-        EMAIL_SMTP_HOST: 'smtp.example.com',
-        EMAIL_SMTP_PORT: 587,
-        EMAIL_SMTP_USER: 'user',
-        EMAIL_SMTP_PASS: 'password',
+        BREVO_API_KEY: apiKey,
         EMAIL_FROM: 'no-reply@example.com',
       },
-      () => new Promise<void>(() => undefined),
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        }) as Promise<Response>,
     );
 
     const mailer = new AuthMailer(logger);
@@ -269,31 +186,59 @@ describe('AuthMailer', () => {
       message: 'Email delivery failed',
     });
 
-    await vi.advanceTimersByTimeAsync(45_000);
+    await vi.advanceTimersByTimeAsync(10_000);
     await rejection;
-    expect(logs.at(-1)?.message).toBe('OTP email send timed out');
-    expect(JSON.stringify(logs)).not.toContain('123456');
-    expect(JSON.stringify(logs)).not.toContain('password');
+
+    expect(logs.at(-1)).toMatchObject({
+      level: 'error',
+      message: 'OTP email send timed out',
+      bindings: {
+        provider: 'brevo',
+        transport: 'https',
+        errorCode: 'BREVO_HTTP_TIMEOUT',
+        elapsedMs: 10_000,
+      },
+    });
+    const serializedLogs = JSON.stringify(logs);
+    expect(serializedLogs).not.toContain(apiKey);
+    expect(serializedLogs).not.toContain('123456');
   });
 
-  it('provides explicit SMTP verification without invoking it during send', async () => {
-    const { AuthMailer, verify, logger, logs } = await loadMailerForTest({
-      NODE_ENV: 'production',
-      EMAIL_SMTP_HOST: 'smtp.example.com',
-      EMAIL_SMTP_PORT: 587,
-      EMAIL_SMTP_USER: 'user',
-      EMAIL_SMTP_PASS: 'password',
+  it('uses the development OTP fallback when the Brevo API key is absent outside production', async () => {
+    const { AuthMailer, fetchMock } = await loadMailerForTest({
+      NODE_ENV: 'development',
       EMAIL_FROM: 'no-reply@example.com',
     });
 
-    const mailer = new AuthMailer(logger);
-    await expect(mailer.verifySmtpConnection()).resolves.toBeUndefined();
+    const mailer = new AuthMailer();
+    const result = await mailer.sendEmailVerificationOtp({
+      email: 'alice@gmail.com',
+      username: 'alice',
+      otp: '654321',
+    });
 
-    expect(verify).toHaveBeenCalledTimes(1);
-    expect(logs.map(({ message }) => message)).toEqual([
-      'SMTP verification started',
-      'SMTP verification completed',
-    ]);
-    expect(JSON.stringify(logs)).not.toContain('password');
+    expect(result).toEqual({
+      otpSent: true,
+      developmentOtp: '654321',
+      deliveryMode: 'DEVELOPMENT_FALLBACK',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('requires Brevo API configuration in production', async () => {
+    const { AuthMailer, fetchMock } = await loadMailerForTest({
+      NODE_ENV: 'production',
+      EMAIL_FROM: 'no-reply@example.com',
+    });
+
+    const mailer = new AuthMailer();
+    await expect(
+      mailer.sendEmailVerificationOtp({
+        email: 'alice@gmail.com',
+        username: 'alice',
+        otp: '000111',
+      }),
+    ).rejects.toMatchObject({ statusCode: 500, code: 'EMAIL_PROVIDER_NOT_CONFIGURED' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
