@@ -1,18 +1,18 @@
 {
-  "name": "octopus-vscode-extension",
-  "displayName": "OCTOPUS",
+  "name": "octopus-ghost",
+  "displayName": "OCTOPUS Ghost",
   "description": "One-click project snapshot capture from VS Code to OCTOPUS.",
   "version": "0.1.0",
   "license": "SEE LICENSE IN LICENSE.md",
-  "publisher": "octopus-publisher-placeholder",
+  "publisher": "octopus-ghost",
   "icon": "resources/octopus.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/octopus/repository-placeholder"
+    "url": "https://github.com/Afifacoding/octopus"
   },
-  "homepage": "https://octopus.example.com",
+  "homepage": "https://octopus-web-r33z.onrender.com",
   "bugs": {
-    "url": "https://github.com/octopus/repository-placeholder/issues"
+    "url": "https://github.com/Afifacoding/octopus/issues"
   },
   "keywords": [
     "octopus",
