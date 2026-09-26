@@ -8,7 +8,7 @@ export function setSessionCookie(reply: FastifyReply, token: string, expiresAt: 
   reply.setCookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     expires: expiresAt,
   });
@@ -18,7 +18,7 @@ export function clearSessionCookie(reply: FastifyReply) {
   reply.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
   });
 }
