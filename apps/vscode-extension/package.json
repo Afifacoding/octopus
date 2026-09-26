@@ -2,7 +2,7 @@
   "name": "octopus-ghost",
   "displayName": "OCTOPUS Ghost",
   "description": "One-click project snapshot capture from VS Code to OCTOPUS.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "SEE LICENSE IN LICENSE.md",
   "publisher": "octopus-ghost",
   "icon": "resources/octopus.png",
