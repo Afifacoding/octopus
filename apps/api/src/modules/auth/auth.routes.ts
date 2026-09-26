@@ -8,8 +8,8 @@ import { AuthService } from './auth.service.js';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   const repository = new AuthRepository();
-  const mailer = new AuthMailer();
-  const service = new AuthService(repository, mailer);
+  const mailer = new AuthMailer(app.log);
+  const service = new AuthService(repository, mailer, app.log);
   const controller = createAuthController(service);
   const requireAuth = createRequireAuth(service);
 

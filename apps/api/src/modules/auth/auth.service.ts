@@ -16,6 +16,7 @@ import {
 import { AuthMailer, type OtpDeliveryResult } from './auth.mailer.js';
 import { AuthRepository } from './auth.repository.js';
 import type {
+  AuthDiagnosticLogger,
   ExtensionConnectionStatus,
   LoginInput,
   OtpDeliveryMetadata,
@@ -26,6 +27,7 @@ import type {
   UpdateProfileInput,
   VerifyOtpInput,
 } from './auth.types.js';
+import { getRecipientDomain, silentAuthDiagnosticLogger } from './auth.diagnostics.js';
 
 const EXTENSION_USER_AGENT_MARKER = 'octopus-vscode-extension';
 
@@ -36,6 +38,7 @@ export class AuthService {
   constructor(
     private readonly repository: AuthRepository,
     private readonly mailer: AuthMailer,
+    private readonly logger: AuthDiagnosticLogger = silentAuthDiagnosticLogger,
   ) {}
 
   async signup(input: SignupInput): Promise<{ user: PublicUser } & OtpDeliveryMetadata> {
@@ -79,8 +82,17 @@ export class AuthService {
   }
 
   async requestOtp(input: RequestOtpInput) {
+    const startedAt = Date.now();
     const email = normalizeEmail(input.email);
     const user = await this.repository.findUserByEmail(email);
+    this.logger.info(
+      {
+        recipientDomain: getRecipientDomain(email),
+        userFound: Boolean(user),
+        elapsedMs: Date.now() - startedAt,
+      },
+      'OTP request user lookup completed',
+    );
 
     if (!user) {
       return { otpSent: true } as const;
@@ -339,6 +351,7 @@ export class AuthService {
   }
 
   private async issueVerificationOtp(userId: string, email: string, username: string): Promise<OtpDeliveryResult> {
+    const startedAt = Date.now();
     await this.repository.invalidateActiveOtpChallenges(userId);
 
     const otp = generateOtpCode();
@@ -350,6 +363,13 @@ export class AuthService {
       maxAttempts: env.AUTH_OTP_MAX_ATTEMPTS,
       resendAvailableAt: secondsFromNow(env.AUTH_OTP_RESEND_COOLDOWN_SECONDS),
     });
+
+    const safeMetadata = {
+      recipientDomain: getRecipientDomain(email),
+      elapsedMs: Date.now() - startedAt,
+    };
+    this.logger.info(safeMetadata, 'OTP challenge creation completed');
+    this.logger.info(safeMetadata, 'OTP email mailer call starting');
 
     return this.mailer.sendEmailVerificationOtp({
       email,

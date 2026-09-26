@@ -425,6 +425,33 @@ describe('AuthService', () => {
     });
   });
 
+  it('logs OTP lookup and persistence stages without logging email local parts or OTP values', async () => {
+    const logs: Array<{ bindings: Record<string, unknown>; message: string }> = [];
+    const logger = {
+      info: (bindings: Record<string, unknown>, message: string) => logs.push({ bindings, message }),
+      error: () => undefined,
+    };
+    service = new AuthService(repository as never, mailer as never, logger);
+    await repository.createPendingUser({
+      username: 'alice',
+      email: 'private.recipient@gmail.com',
+      passwordHash: 'not-used-in-this-test',
+    });
+
+    const result = await service.requestOtp({ email: 'private.recipient@gmail.com' });
+
+    expect(result.otpSent).toBe(true);
+    expect(logs.map(({ message }) => message)).toEqual([
+      'OTP request user lookup completed',
+      'OTP challenge creation completed',
+      'OTP email mailer call starting',
+    ]);
+    expect(logs[0]?.bindings).toMatchObject({ recipientDomain: 'gmail.com', userFound: true });
+    const serializedLogs = JSON.stringify(logs);
+    expect(serializedLogs).not.toContain('private.recipient');
+    expect(serializedLogs).not.toContain(mailer.lastOtp?.otp);
+  });
+
   it('supports valid login for verified users', async () => {
     await service.signup({ username: 'alice', email: 'alice@gmail.com', password: 'SecurePass123' });
     const otp = mailer.lastOtp?.otp;
