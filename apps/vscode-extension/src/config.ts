@@ -16,7 +16,7 @@ export function getApiBaseUrl() {
   if (environment === 'production') {
     return config.get<string>(
       'productionApiBaseUrl',
-      'https://OCTOPUS_API_BASE_URL_PLACEHOLDER/api/v1',
+      'https://octopus-api-bnh6.onrender.com/api/v1',
     );
   }
 
@@ -32,7 +32,7 @@ export function getWebBaseUrl() {
   const environment = getEnvironment();
 
   if (environment === 'production') {
-    return config.get<string>('productionWebBaseUrl', 'https://OCTOPUS_WEB_BASE_URL_PLACEHOLDER');
+    return config.get<string>('productionWebBaseUrl', 'https://octopus-web-r33z.onrender.com');
   }
 
   if (environment === 'custom') {

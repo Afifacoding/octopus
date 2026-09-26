@@ -90,7 +90,7 @@
             "production",
             "custom"
           ],
-          "default": "development",
+          "default": "production",
           "description": "Select which OCTOPUS environment URLs the extension should use"
         },
         "octopus.developmentApiBaseUrl": {
@@ -100,8 +100,8 @@
         },
         "octopus.productionApiBaseUrl": {
           "type": "string",
-          "default": "https://OCTOPUS_API_BASE_URL_PLACEHOLDER/api/v1",
-          "description": "Production OCTOPUS API URL placeholder. Replace with real production backend URL before publishing."
+          "default": "https://octopus-api-bnh6.onrender.com/api/v1",
+          "description": "Production OCTOPUS API URL"
         },
         "octopus.webBaseUrl": {
           "type": "string",
@@ -115,8 +115,8 @@
         },
         "octopus.productionWebBaseUrl": {
           "type": "string",
-          "default": "https://OCTOPUS_WEB_BASE_URL_PLACEHOLDER",
-          "description": "Production OCTOPUS web URL placeholder. Replace before publishing."
+          "default": "https://octopus-web-r33z.onrender.com",
+          "description": "Production OCTOPUS web application URL"
         },
         "octopus.requestTimeoutMs": {
           "type": "number",
