@@ -5,6 +5,7 @@ import path from 'node:path';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { assertSafeRelativePath } from '../../core/security/secure-file-path.js';
+import { decryptSnapshotArchive, encryptSnapshotArchive } from '../secrets/secrets.crypto.js';
 
 export type StoreSnapshotArchiveInput = {
   ownerId: string;
@@ -41,31 +42,39 @@ export const allowedArchiveContentTypes = new Set(Object.keys(extensionByContent
 export class LocalSnapshotStorage implements SnapshotStorage {
   private readonly rootDir = path.resolve(env.SNAPSHOT_STORAGE_LOCAL_ROOT);
 
-  async storeArchive(input: StoreSnapshotArchiveInput): Promise<StoreSnapshotArchiveResult> {
-    const fileExtension = extensionByContentType[input.contentType];
-    if (!fileExtension) {
-      throw new HttpError(400, 'SNAPSHOT_UNSUPPORTED_ARCHIVE_TYPE', 'Unsupported archive content type');
-    }
+ async storeArchive(input: StoreSnapshotArchiveInput): Promise<StoreSnapshotArchiveResult> {
+  const fileExtension = extensionByContentType[input.contentType];
 
-    const relativeStorageKey = assertSafeRelativePath(
-      `${input.ownerId}/${input.projectId}/${input.snapshotId}/project.${fileExtension}`,
+  if (!fileExtension) {
+    throw new HttpError(
+      400,
+      'SNAPSHOT_UNSUPPORTED_ARCHIVE_TYPE',
+      'Unsupported archive content type',
     );
-
-    const absolutePath = this.toSafeStoragePath(relativeStorageKey);
-
-    await mkdir(path.dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, input.buffer);
-
-    const persisted = await readFile(absolutePath);
-    const hash = createHash('sha256').update(persisted).digest('hex');
-
-    return {
-      storageKey: relativeStorageKey,
-      sizeBytes: persisted.byteLength,
-      integrityAlgorithm: 'sha256',
-      integrityHash: hash,
-    };
   }
+
+  const relativeStorageKey = assertSafeRelativePath(
+    `${input.ownerId}/${input.projectId}/${input.snapshotId}/project.${fileExtension}`,
+  );
+
+  const absolutePath = this.toSafeStoragePath(relativeStorageKey);
+
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, encryptSnapshotArchive(input.buffer));
+
+  // Calculate the hash directly from the existing buffer.
+  // This avoids reading the entire saved archive back into memory.
+  const hash = createHash('sha256')
+    .update(input.buffer)
+    .digest('hex');
+
+  return {
+    storageKey: relativeStorageKey,
+    sizeBytes: input.buffer.byteLength,
+    integrityAlgorithm: 'sha256',
+    integrityHash: hash,
+  };
+}
 
   async deleteArchive(storageKey: string): Promise<void> {
     const safeStorageKey = assertSafeRelativePath(storageKey);
@@ -76,7 +85,7 @@ export class LocalSnapshotStorage implements SnapshotStorage {
   async readArchive(storageKey: string): Promise<Buffer> {
     const safeStorageKey = assertSafeRelativePath(storageKey);
     const absolutePath = this.toSafeStoragePath(safeStorageKey);
-    return readFile(absolutePath);
+    return decryptSnapshotArchive(await readFile(absolutePath));
   }
 
   private toSafeStoragePath(storageKey: string) {

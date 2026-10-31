@@ -81,7 +81,7 @@ describe('detectSecretsFromArchive', () => {
       },
       {
         path: 'project/.env.production',
-        content: 'API_KEY=TEST_API_KEY_PLACEHOLDER',
+        content: 'API_KEY=sk_test_fake_0123456789abcdef',
       },
     ]);
 
@@ -93,6 +93,53 @@ describe('detectSecretsFromArchive', () => {
     expect(detections.some((item) => item.metadata.secretLabel === 'DATABASE_PASSWORD')).toBe(true);
     expect(detections.some((item) => item.metadata.secretLabel === 'AUTH_SESSION_SECRET')).toBe(true);
     expect(detections.some((item) => item.metadata.secretLabel === 'API_KEY')).toBe(true);
+  });
+
+  it('detects common provider credentials in project source files', async () => {
+    const zip = await createZipBuffer([
+      {
+        path: 'project/src/config.ts',
+        content: [
+          `const google = "AIza${'A'.repeat(35)}";`,
+          `const slack = "xoxb-1234567890-${'a'.repeat(24)}";`,
+          `const gitlab = "glpat-${'b'.repeat(24)}";`,
+          `const github = "github_pat_${'c'.repeat(32)}";`,
+          `const npm = "npm_${'d'.repeat(30)}";`,
+          `const stripe = "rk_live_${'E'.repeat(20)}";`,
+          `const openai = "sk-proj-${'f'.repeat(32)}";`,
+        ].join('\n'),
+      },
+    ]);
+
+    const detections = await detectSecretsFromArchive({ archiveBuffer: zip, maxPathLength: 512 });
+    const detectionRules = detections.map((item) => item.detectionRule);
+
+    expect(detections).toHaveLength(7);
+    expect(detectionRules).toEqual(expect.arrayContaining([
+      'google-api-key',
+      'slack-token',
+      'gitlab-token',
+      'github-fine-grained-token',
+      'npm-token',
+      'stripe-restricted-key',
+      'openai-project-key',
+    ]));
+    expect(detections.every((item) => item.sourceFilePath === 'project/src/config.ts')).toBe(true);
+  });
+
+  it('detects complete PEM private-key blocks with a bounded masked preview', async () => {
+    const privateKey = '-----BEGIN PRIVATE KEY-----\nFAKE_KEY_MATERIAL_0123456789\n-----END PRIVATE KEY-----';
+    const zip = await createZipBuffer([
+      { path: 'project/keys/private.pem', content: privateKey },
+    ]);
+
+    const detections = await detectSecretsFromArchive({ archiveBuffer: zip, maxPathLength: 512 });
+    const privateKeyDetection = detections.find((item) => item.detectionRule === 'private-key-block');
+
+    expect(privateKeyDetection?.rawValue).toBe(privateKey);
+    expect(privateKeyDetection?.metadata.secretLabel).toBe('PRIVATE_KEY');
+    expect(privateKeyDetection?.maskedPreview).not.toContain('FAKE_KEY_MATERIAL');
+    expect((privateKeyDetection?.maskedPreview ?? '').length).toBeLessThan(128);
   });
 
   it('does not detect source-code identifiers or test fixtures as secrets', async () => {

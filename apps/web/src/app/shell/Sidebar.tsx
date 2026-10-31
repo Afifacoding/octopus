@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 
+import { BrandLogo } from '../../components/branding/BrandLogo';
 import { useAuth } from '../../lib/auth/auth-context';
 import { SHELL_NAV_ITEMS } from './navigation';
 
@@ -9,9 +10,7 @@ export function Sidebar(options?: { onNavigate?: () => void }) {
   return (
     <aside className="sidebar" aria-label="Primary navigation">
       <div className="brand">
-        <div className="logo" aria-hidden="true">
-          OCTO
-        </div>
+        <BrandLogo variant="mark" />
         <div>
           <div className="brand-name">OCTOPUS</div>
           <div className="brand-sub">by Ghost Protocol</div>

@@ -1,5 +1,9 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
+import { env } from '../../config/env.js';
 import { LocalSnapshotStorage } from './snapshots.storage.js';
 
 describe('LocalSnapshotStorage', () => {
@@ -20,8 +24,12 @@ describe('LocalSnapshotStorage', () => {
     expect(result.integrityAlgorithm).toBe('sha256');
     expect(result.integrityHash.length).toBe(64);
 
+    const storedBytes = await readFile(path.resolve(env.SNAPSHOT_STORAGE_LOCAL_ROOT, result.storageKey));
+    expect(storedBytes.subarray(0, 8).toString()).toBe('OCTOARCH');
+    expect(storedBytes.equals(buffer)).toBe(false);
+
     const stored = await storage.readArchive(result.storageKey);
-    expect(stored.byteLength).toBe(buffer.byteLength);
+    expect(stored).toEqual(buffer);
 
     await storage.deleteArchive(result.storageKey);
   });

@@ -2,8 +2,8 @@ import { env } from '../../config/env.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { createSnapshotStorage, type SnapshotStorage } from '../snapshots/snapshots.storage.js';
 import { decryptSecretValue, encryptSecretValue, maskSecretValue } from './secrets.crypto.js';
-import { detectSecretsFromArchive } from './secrets.detection.js';
-import { canAutoImportToVault, canExposeThroughVault } from './secrets.protection-policy.js';
+import { detectSecretsFromArchive, getSuggestedSecretLabel } from './secrets.detection.js';
+import { canAutoImportToVault, canExposeThroughVault, shouldInspectForSecretDetection } from './secrets.protection-policy.js';
 import { SecretsRepository } from './secrets.repository.js';
 import type {
   DetectionProcessResult,
@@ -611,6 +611,7 @@ export class SecretsService {
   private resolveAutoSecretLabel(
     rawDetection: {
       category: SecretDbRecord['category'];
+      detectionRule: string;
       sourceFilePath: string;
       sourceLineNumber: number | null;
       metadata: Record<string, unknown>;
@@ -631,7 +632,14 @@ export class SecretsService {
       return fallbackCandidate.secretLabel.trim();
     }
 
-    return null;
+    const suggestedLabel = getSuggestedSecretLabel(rawDetection.detectionRule);
+    if (!suggestedLabel) {
+      return null;
+    }
+
+    const baseName = rawDetection.sourceFilePath.replace(/\\/g, '/').split('/').pop() ?? 'project-file';
+    const sourceLocation = `${baseName}:${rawDetection.sourceLineNumber ?? 1}`;
+    return `${suggestedLabel} (${sourceLocation})`.slice(0, 120);
   }
 
   private buildAutoSecretMetadata(detection: SecretDetectionDbRecord): Record<string, unknown> {
@@ -649,16 +657,7 @@ export class SecretsService {
   }
 
   private isEligibleAutoImportSourcePath(sourceFilePath: string) {
-    const normalized = sourceFilePath.replace(/\\/g, '/').toLowerCase();
-    const segments = normalized.split('/').filter(Boolean);
-    const baseName = segments[segments.length - 1] ?? '';
-
-    const isEnvFile = baseName === '.env' || baseName.startsWith('.env.');
-    if (!isEnvFile) {
-      return false;
-    }
-
-    return true;
+    return shouldInspectForSecretDetection(sourceFilePath);
   }
 
   private async cleanupInvalidAutoImportedSecrets(ownerId: string, projectId: string) {

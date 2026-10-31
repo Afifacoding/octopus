@@ -120,13 +120,13 @@
         },
         "octopus.requestTimeoutMs": {
           "type": "number",
-          "default": 45000,
+          "default": 120000,
           "minimum": 5000,
           "description": "HTTP timeout in milliseconds for OCTOPUS API requests"
         },
         "octopus.capture.maxUploadBytes": {
           "type": "number",
-          "default": 700000,
+          "default": 31457280,
           "minimum": 100000,
           "description": "Maximum packaged archive size in bytes before upload"
         },
@@ -150,7 +150,7 @@
         },
         "octopus.capture.excludeSensitiveFiles": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Exclude known sensitive files from capture"
         },
         "octopus.capture.excludePatterns": {

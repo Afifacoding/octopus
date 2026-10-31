@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildApp } from '../../app.js';
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+
+function hasDedicatedLocalTestDatabase() {
+  if (!testDatabaseUrl) {
+    return false;
+  }
+
+  try {
+    const url = new URL(testDatabaseUrl);
+    const databaseName = decodeURIComponent(url.pathname.slice(1));
+    return (
+      ['localhost', '127.0.0.1', '::1'].includes(url.hostname) &&
+      /(?:-|_)test$/iu.test(databaseName)
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function createAuthenticatedContext() {
+  if (!testDatabaseUrl || !hasDedicatedLocalTestDatabase()) {
+    throw new Error('Set TEST_DATABASE_URL to a dedicated local database ending in _test or -test');
+  }
+
+  process.env.DATABASE_URL = testDatabaseUrl;
+  const { buildApp } = await import('../../app.js');
   const app = buildApp();
   const unique = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const email = `project_color_${unique}@gmail.com`;
@@ -57,7 +80,7 @@ async function createAuthenticatedContext() {
   };
 }
 
-describe('Project permanent delete route', () => {
+describe.skipIf(!hasDedicatedLocalTestDatabase())('Project permanent delete route', () => {
   it('creates project with a valid preset color', async () => {
     const context = await createAuthenticatedContext();
 

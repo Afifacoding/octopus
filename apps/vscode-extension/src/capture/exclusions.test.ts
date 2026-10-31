@@ -25,14 +25,22 @@ describe('capture exclusions', () => {
     expect(matcher.shouldExcludePath('repo/tmp/a.txt')).toBe(true);
   });
 
-  it('excludes sensitive files by policy', () => {
+  it('includes credential files by default and supports an explicit exclusion override', () => {
     const matcher = createExclusionMatcher({
       customPatterns: [],
-      excludeSensitiveFiles: true,
     });
 
     expect(matcher.shouldExcludePath('workspace/.env')).toBe(false);
     expect(matcher.shouldExcludePath('workspace/.env.local')).toBe(false);
+    expect(matcher.shouldExcludePath('workspace/certs/client.pem')).toBe(false);
+    expect(matcher.shouldExcludePath('workspace/keys/private.key')).toBe(false);
+
+    const explicitSensitiveExclusion = createExclusionMatcher({
+      customPatterns: [],
+      excludeSensitiveFiles: true,
+    });
+    expect(explicitSensitiveExclusion.shouldExcludePath('workspace/certs/client.pem')).toBe(true);
+    expect(explicitSensitiveExclusion.shouldExcludePath('workspace/keys/private.key')).toBe(true);
     expect(matcher.shouldExcludePath('workspace/release.vsix')).toBe(true);
     expect(matcher.shouldExcludePath('workspace/PROJECT_SPECIFICATION.md.pdf')).toBe(true);
     expect(matcher.shouldExcludePath('workspace/debug.log')).toBe(true);

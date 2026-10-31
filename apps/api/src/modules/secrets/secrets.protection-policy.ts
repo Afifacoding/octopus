@@ -37,7 +37,37 @@ const EXCLUDED_PATH_SEGMENTS = new Set([
 ]);
 
 const INSPECTABLE_EXTENSIONS = new Set([
+  '.bash',
+  '.c',
+  '.cc',
+  '.conf',
+  '.cpp',
+  '.crt',
+  '.cs',
+  '.env',
+  '.go',
+  '.h',
+  '.hpp',
+  '.java',
+  '.js',
+  '.jsx',
   '.json',
+  '.kt',
+  '.php',
+  '.pem',
+  '.ps1',
+  '.py',
+  '.rb',
+  '.rs',
+  '.sh',
+  '.sql',
+  '.swift',
+  '.tf',
+  '.ts',
+  '.tsx',
+  '.xml',
+  '.vue',
+  '.key',
   '.yaml',
   '.yml',
   '.toml',
@@ -117,6 +147,7 @@ export function classifySecretCandidate(input: { key: string; value?: string | n
   if (
     includesAny(key, [
       'JWT_SECRET',
+      'JWT_TOKEN',
       'AUTH_SESSION_SECRET',
       'AUTH_OTP_SECRET',
       'API_KEY',
@@ -132,6 +163,8 @@ export function classifySecretCandidate(input: { key: string; value?: string | n
       'ACCESS_TOKEN',
       'SECRET',
       'PRIVATE_KEY',
+      'ACCESS_KEY',
+      'RESTRICTED_KEY',
       'CLIENT_SECRET',
     ])
   ) {
@@ -155,7 +188,7 @@ export function shouldFullyMaskValue(input: { key: string; value?: string | null
 }
 
 export function canAutoImportToVault(input: { key: string; value: string; sourceFilePath: string }) {
-  if (!isEnvFilePath(input.sourceFilePath)) {
+  if (!shouldInspectForSecretDetection(input.sourceFilePath)) {
     return false;
   }
 

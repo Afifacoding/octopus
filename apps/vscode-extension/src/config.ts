@@ -51,7 +51,7 @@ export function getCaptureExcludePatterns() {
 export function getCaptureExcludeSensitiveFiles() {
   return vscode.workspace
     .getConfiguration(CONFIG_SECTION)
-    .get<boolean>('capture.excludeSensitiveFiles', true);
+    .get<boolean>('capture.excludeSensitiveFiles', false);
 }
 
 export function getCaptureAnalyzeSecrets() {
@@ -63,7 +63,7 @@ export function getCaptureAnalyzeSecrets() {
 export function getCaptureMaxUploadBytes() {
   return vscode.workspace
     .getConfiguration(CONFIG_SECTION)
-    .get<number>('capture.maxUploadBytes', 700000);
+    .get<number>('capture.maxUploadBytes', 31457280);
 }
 
 export function getCaptureMaxFiles() {
@@ -87,5 +87,5 @@ export function getCaptureMaxTotalBytes() {
 export function getRequestTimeoutMs() {
   return vscode.workspace
     .getConfiguration(CONFIG_SECTION)
-    .get<number>('requestTimeoutMs', 45000);
+    .get<number>('requestTimeoutMs', 120000);
 }

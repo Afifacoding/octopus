@@ -26,7 +26,7 @@ describe('workspace archive packaging', () => {
       });
 
       expect(packaged.sizeBytes).toBeGreaterThan(0);
-      expect(packaged.base64Data.length).toBeGreaterThan(0);
+      expect(packaged.archivePath).toMatch(/\.zip$/u);
 
       await cleanupTemporaryArchive(packaged.tempDir);
     } finally {

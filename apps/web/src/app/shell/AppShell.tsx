@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 
+import { BrandLogo } from '../../components/branding/BrandLogo';
 import { useAuth } from '../../lib/auth/auth-context';
 import { MobileNavigationDrawer } from './MobileNavigationDrawer';
 import { Sidebar } from './Sidebar';
@@ -49,8 +50,11 @@ export function AppShell() {
           </button>
 
           <div className="mobile-header-brand" aria-hidden="true">
-            <div className="brand-name">OCTOPUS</div>
-            <div className="brand-sub">by Ghost Protocol</div>
+            <BrandLogo variant="mark" />
+            <div>
+              <div className="brand-name">OCTOPUS</div>
+              <div className="brand-sub">by Ghost Protocol</div>
+            </div>
           </div>
 
           <Link className="avatar" to="/profile" aria-label="Open profile">

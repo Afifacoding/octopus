@@ -7,7 +7,14 @@ import { runSnapshotCapture } from './save-snapshot';
 const mocks = vi.hoisted(() => ({
   me: vi.fn(async () => ({ user: { id: 'user_1' } })),
   login: vi.fn(),
-  createSnapshot: vi.fn(async () => ({ snapshot: { id: 'snapshot_1' } })),
+  createSnapshot: vi.fn(async (options: {
+    projectId: string;
+    cookie: string;
+    timeoutMs: number;
+    payload: unknown;
+    archivePath: string;
+    onUploadProgress?: (sentBytes: number, totalBytes: number) => void;
+  }) => ({ snapshot: { id: 'snapshot_1' }, options })),
   getSessionCookie: vi.fn(async () => 'session-cookie'),
   clearSessionCookie: vi.fn(async () => undefined),
   saveSessionCookie: vi.fn(async () => undefined),
@@ -17,12 +24,10 @@ const mocks = vi.hoisted(() => ({
     archivePath: 'archive.zip',
     tempDir: 'temp-dir',
     sizeBytes: 100,
-    base64Data: 'YQ==',
   })),
   cleanupTemporaryArchive: vi.fn(async () => undefined),
   scanWorkspace: vi.fn(async () => ({
     files: [{ absolutePath: 'a.ts', relativePath: 'workspace/a.ts', sizeBytes: 1 }],
-    entries: [{ path: 'workspace/a.ts', type: 'FILE' }],
     fileCount: 1,
     directoryCount: 0,
     totalSizeBytes: 1,
@@ -54,6 +59,7 @@ vi.mock('../projects/selection', () => ({
 vi.mock('../config', () => ({
   getCaptureExcludePatterns: () => [],
   getCaptureExcludeSensitiveFiles: () => true,
+  getCaptureAnalyzeSecrets: () => true,
   getCaptureMaxDirectories: () => 100,
   getCaptureMaxFiles: () => 100,
   getCaptureMaxTotalBytes: () => 100000,
@@ -80,7 +86,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   mocks.cleanupTemporaryArchive.mockClear();
   mocks.createSnapshot.mockReset();
-  mocks.createSnapshot.mockResolvedValue({ snapshot: { id: 'snapshot_1' } });
+  mocks.createSnapshot.mockImplementation(async (options) => ({ snapshot: { id: 'snapshot_1' }, options }));
 });
 
 describe('runSnapshotCapture archive cleanup', () => {
@@ -117,5 +123,37 @@ describe('runSnapshotCapture archive cleanup', () => {
     });
 
     expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('temp-dir');
+  });
+
+  it('passes upload progress into the VS Code progress notification', async () => {
+    const report = vi.fn();
+    const showError = vi.spyOn(vscode.window, 'showErrorMessage');
+    vi.spyOn(vscode.window, 'withProgress').mockImplementationOnce(async (_progressOptions, task) =>
+      task({ report }, { isCancellationRequested: false } as never) as never,
+    );
+
+    await runSnapshotCapture({ context: {} as never, updateView: () => undefined });
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(mocks.createSnapshot).toHaveBeenCalledTimes(1);
+    const requestOptions = mocks.createSnapshot.mock.calls[0]?.[0];
+    expect(requestOptions?.archivePath).toBe('archive.zip');
+    requestOptions?.onUploadProgress?.(50, 100);
+    expect(report).toHaveBeenCalledWith({ message: 'Uploading snapshot... 50%' });
+  });
+
+  it('fails clearly and cleans the archive when the upload cap is exceeded', async () => {
+    mocks.packageWorkspaceAsZip.mockResolvedValueOnce({
+      archivePath: 'large-archive.zip',
+      tempDir: 'large-temp-dir',
+      sizeBytes: 100001,
+    });
+    const showError = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    await runSnapshotCapture({ context: {} as never, updateView: () => undefined });
+
+    expect(showError).toHaveBeenCalledWith(expect.stringContaining('Project archive is too large'));
+    expect(mocks.createSnapshot).not.toHaveBeenCalled();
+    expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('large-temp-dir');
   });
 });

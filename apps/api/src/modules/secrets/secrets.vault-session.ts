@@ -80,7 +80,7 @@ export function setVaultSessionCookie(reply: FastifyReply, token: string, expire
   reply.setCookie(VAULT_SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     expires: expiresAt,
   });
@@ -90,7 +90,7 @@ export function clearVaultSessionCookie(reply: FastifyReply) {
   reply.clearCookie(VAULT_SESSION_COOKIE_NAME, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
   });
 }

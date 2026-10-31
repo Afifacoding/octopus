@@ -9,14 +9,8 @@ export type CapturedFile = {
   sizeBytes: number;
 };
 
-export type CaptureEntry = {
-  path: string;
-  type: 'FILE' | 'DIRECTORY';
-};
-
 export type WorkspaceScanResult = {
   files: CapturedFile[];
-  entries: CaptureEntry[];
   fileCount: number;
   directoryCount: number;
   totalSizeBytes: number;

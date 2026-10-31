@@ -12,7 +12,7 @@ The extension is focused on one workflow:
 4. Select or create an OCTOPUS project.
 5. Run Save Snapshot.
 
-The extension captures your workspace, applies exclusions, creates an archive, and uploads it to OCTOPUS as a project snapshot.
+The extension captures your workspace, applies generated-file exclusions, creates an archive, and uploads it to OCTOPUS as a project snapshot. Environment files and credential files are included by default so OCTOPUS can detect and import project secrets into Secret Vault.
 
 ## What It Does Not Do
 
@@ -20,7 +20,7 @@ This extension does not replace the OCTOPUS web app. Project management, snapsho
 
 ## Installation
 
-When published, install from the VS Code Marketplace by searching for OCTOPUS.
+When published, install from the VS Code Marketplace by searching for OCTOPUS Ghost.
 
 For local development:
 
@@ -57,25 +57,24 @@ The extension settings are under octopus:
 - octopus.capture.excludeSensitiveFiles
 - octopus.capture.excludePatterns
 - octopus.capture.maxUploadBytes
+- Default archive upload limit is 30 MiB, coordinated with the current API archive limit.
 - octopus.capture.maxFiles
 - octopus.capture.maxDirectories
 - octopus.capture.maxTotalBytes
 
-Before Marketplace publication, replace production URL placeholders with real OCTOPUS production endpoints.
+Before a Marketplace release, confirm the `octopus-ghost` publisher is registered and the production endpoints are available.
 
 ## Security And Privacy Notes
 
 When Save Snapshot runs:
 
-1. Workspace is scanned using capture policy.
+1. Workspace is scanned using capture policy. Generated folders are excluded; credentials are intentionally retained in the snapshot.
 2. Excluded paths are skipped.
 3. Archive is created in a temporary location.
 4. Archive is uploaded to the configured OCTOPUS backend.
 5. Temporary archive is cleaned up.
 
-Authentication secrets are stored using VS Code SecretStorage.
-
-The full OCTOPUS Secret Vault and advanced masking workflow are not implemented in this extension phase.
+Authentication secrets are stored using VS Code SecretStorage. Snapshot archives are encrypted at rest by the API using the configured vault encryption key; detected Secret Vault values are separately encrypted with AES-256-GCM. Ordinary Vault listings and code previews are masked; authorized users can explicitly unlock and reveal Vault values.
 
 ## Development Commands
 
@@ -93,7 +92,7 @@ This extension follows semantic versioning.
 - Minor: backward-compatible user-visible features
 - Major: breaking changes
 
-Current version remains 0.1.0.
+Current version is 0.1.1.
 
 ## Publishing Preparation
 
@@ -101,8 +100,6 @@ This repository is prepared for future publication only.
 
 Required steps before real publish:
 
-1. Create a Visual Studio Marketplace publisher account.
-2. Replace OCTOPUS_PUBLISHER_PLACEHOLDER in extension manifest.
-3. Replace production API and web URL placeholders.
-4. Package and validate VSIX.
-5. Publish with a secure Marketplace PAT outside source control.
+1. Confirm access to the `octopus-ghost` Marketplace publisher.
+2. Package and validate the VSIX.
+3. Publish using a secure Marketplace credential outside source control.

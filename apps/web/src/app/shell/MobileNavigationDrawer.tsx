@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 
+import { BrandLogo } from '../../components/branding/BrandLogo';
 import { useAuth } from '../../lib/auth/auth-context';
 import { SHELL_NAV_ITEMS } from './navigation';
 
@@ -52,9 +53,12 @@ export function MobileNavigationDrawer(props: MobileNavigationDrawerProps) {
       >
         <div className="mobile-drawer-inner">
           <div className="mobile-drawer-top">
-            <div>
-              <div className="brand-name">OCTOPUS</div>
-              <div className="brand-sub">by Ghost Protocol</div>
+            <div className="mobile-drawer-brand">
+              <BrandLogo variant="mark" />
+              <div>
+                <div className="brand-name">OCTOPUS</div>
+                <div className="brand-sub">by Ghost Protocol</div>
+              </div>
             </div>
             <button
               type="button"

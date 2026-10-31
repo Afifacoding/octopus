@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { BrandLogo } from '../components/branding/BrandLogo';
 import { signup } from '../lib/auth/auth-client';
 
 export function SignupPage() {
@@ -47,8 +48,7 @@ export function SignupPage() {
     <div className="auth">
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="auth-brand">
-          <div className="logo auth-logo">OCTO</div>
-          <div className="brand-name auth-title">OCTOPUS</div>
+          <BrandLogo variant="full" />
           <div className="brand-sub">Create your secure OCTOPUS account</div>
         </div>
 

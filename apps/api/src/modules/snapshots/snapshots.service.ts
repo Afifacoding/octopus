@@ -438,6 +438,7 @@ export class SnapshotsService {
       await this.transitionStatus(projectId, snapshot.id, snapshot.status, 'PROCESSING');
 
       const archiveBuffer = this.decodeArchiveData(input.archive.base64Data, input.archive.sizeBytes);
+      input.archive.base64Data = '';
       const storageResult = await this.storage.storeArchive({
         ownerId,
         projectId,
@@ -446,7 +447,7 @@ export class SnapshotsService {
         contentType: input.archive.contentType,
       });
 
-      await this.completeSnapshot(ownerId, projectId, snapshot.id, input, storageResult);
+      await this.completeSnapshot(ownerId, projectId, snapshot.id, input, storageResult, archiveBuffer);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Snapshot processing failed';
 
@@ -1013,13 +1014,13 @@ export class SnapshotsService {
     snapshotId: string,
     input: SnapshotCreateInput,
     storageResult: StoreSnapshotArchiveResult,
+    archiveBuffer: Buffer,
   ) {
     const processing = await this.repository.findSnapshotByIdForProject(projectId, snapshotId);
     if (!processing) {
       throw new HttpError(404, 'SNAPSHOT_NOT_FOUND', 'Snapshot not found');
     }
 
-    const archiveBuffer = await this.storage.readArchive(storageResult.storageKey);
     const directoryTree = await this.buildSnapshotDirectoryTree(input.archive.contentType, archiveBuffer);
 
     if (this.secretsService) {

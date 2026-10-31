@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { decryptSecretValue, encryptSecretValue, maskSecretValue } from './secrets.crypto.js';
+import {
+  decryptSecretValue,
+  decryptSnapshotArchive,
+  encryptSecretValue,
+  encryptSnapshotArchive,
+  maskSecretValue,
+} from './secrets.crypto.js';
 
 describe('secret crypto', () => {
   it('encrypts and decrypts successfully', () => {
@@ -42,5 +48,23 @@ describe('secret crypto', () => {
     expect(awsMasked.endsWith('MNOP')).toBe(true);
     expect(awsMasked.includes('*')).toBe(true);
     expect(maskSecretValue('token-value-123456')).not.toContain('value-123456');
+  });
+
+  it('encrypts snapshot archive bytes and supports legacy plaintext archives', () => {
+    const archive = Buffer.from('zip contents with credentials');
+    const encrypted = encryptSnapshotArchive(archive);
+
+    expect(encrypted).not.toContain(archive);
+    expect(decryptSnapshotArchive(encrypted)).toEqual(archive);
+    expect(decryptSnapshotArchive(archive)).toEqual(archive);
+  });
+
+  it('rejects tampered encrypted snapshot archives', () => {
+    const encrypted = encryptSnapshotArchive(Buffer.from('snapshot bytes'));
+    encrypted[encrypted.length - 1] = (encrypted[encrypted.length - 1] ?? 0) ^ 1;
+
+    expect(() => decryptSnapshotArchive(encrypted)).toThrowError(
+      expect.objectContaining({ code: 'SNAPSHOT_ARCHIVE_DECRYPT_FAILED' }),
+    );
   });
 });

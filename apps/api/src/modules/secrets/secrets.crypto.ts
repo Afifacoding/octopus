@@ -5,6 +5,8 @@ import { HttpError } from '../../core/errors/http-error.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
+const SNAPSHOT_ARCHIVE_MAGIC = Buffer.from('OCTOARCH');
+const SNAPSHOT_ARCHIVE_HEADER_LENGTH = SNAPSHOT_ARCHIVE_MAGIC.length + IV_LENGTH + 16;
 
 function parseVaultKey(rawValue: string | undefined) {
   if (!rawValue) {
@@ -69,6 +71,35 @@ export function decryptSecretValue(input: { encryptedValue: string; iv: string; 
   }
 }
 
+export function encryptSnapshotArchive(plaintext: Buffer) {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, vaultKey, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+
+  return Buffer.concat([SNAPSHOT_ARCHIVE_MAGIC, iv, cipher.getAuthTag(), ciphertext]);
+}
+
+export function decryptSnapshotArchive(stored: Buffer) {
+  if (!stored.subarray(0, SNAPSHOT_ARCHIVE_MAGIC.length).equals(SNAPSHOT_ARCHIVE_MAGIC)) {
+    return stored;
+  }
+
+  if (stored.byteLength < SNAPSHOT_ARCHIVE_HEADER_LENGTH) {
+    throw new HttpError(500, 'SNAPSHOT_ARCHIVE_DECRYPT_FAILED', 'Snapshot archive decryption failed');
+  }
+
+  try {
+    const ivStart = SNAPSHOT_ARCHIVE_MAGIC.length;
+    const tagStart = ivStart + IV_LENGTH;
+    const cipherStart = tagStart + 16;
+    const decipher = createDecipheriv(ALGORITHM, vaultKey, stored.subarray(ivStart, tagStart));
+    decipher.setAuthTag(stored.subarray(tagStart, cipherStart));
+    return Buffer.concat([decipher.update(stored.subarray(cipherStart)), decipher.final()]);
+  } catch {
+    throw new HttpError(500, 'SNAPSHOT_ARCHIVE_DECRYPT_FAILED', 'Snapshot archive decryption failed');
+  }
+}
+
 export function maskSecretValue(value: string) {
   const trimmed = value.trim();
   if (trimmed.length <= 4) {
@@ -76,7 +107,7 @@ export function maskSecretValue(value: string) {
   }
 
   if (trimmed.startsWith('sk_live_')) {
-    return `sk_live_${'*'.repeat(Math.max(4, trimmed.length - 8))}`;
+    return `sk_live_${'*'.repeat(Math.min(32, Math.max(4, trimmed.length - 8)))}${trimmed.slice(-4)}`;
   }
 
   if (/^AKIA[0-9A-Z]{16}$/u.test(trimmed)) {
@@ -87,7 +118,7 @@ export function maskSecretValue(value: string) {
     return `${trimmed.slice(0, 1)}${'*'.repeat(trimmed.length - 2)}${trimmed.slice(-1)}`;
   }
 
-  return `${trimmed.slice(0, 4)}${'*'.repeat(trimmed.length - 8)}${trimmed.slice(-4)}`;
+  return `${trimmed.slice(0, 4)}${'*'.repeat(Math.min(32, trimmed.length - 8))}${trimmed.slice(-4)}`;
 }
 
 export function secretFingerprint(parts: string[]) {

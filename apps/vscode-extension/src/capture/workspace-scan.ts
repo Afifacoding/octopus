@@ -2,7 +2,7 @@ import { access, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type * as vscode from 'vscode';
 
-import type { CaptureEntry, CaptureRoot, CapturedFile, WorkspaceScanResult } from './types';
+import type { CaptureRoot, CapturedFile, WorkspaceScanResult } from './types';
 import type { ExclusionMatcher } from './exclusions';
 
 function normalizeRelativePath(value: string) {
@@ -18,7 +18,6 @@ export async function scanWorkspace(options: {
   cancellationToken?: vscode.CancellationToken;
 }): Promise<WorkspaceScanResult> {
   const files: CapturedFile[] = [];
-  const entries: CaptureEntry[] = [];
   const excludedPaths: string[] = [];
   const skippedUnreadablePaths: string[] = [];
 
@@ -61,11 +60,6 @@ export async function scanWorkspace(options: {
             throw new Error('Directory limit exceeded');
           }
 
-          entries.push({
-            path: relativePath,
-            type: 'DIRECTORY',
-          });
-
           pendingDirs.push({
             absolutePath,
             relativePath,
@@ -82,35 +76,32 @@ export async function scanWorkspace(options: {
           throw new Error('File limit exceeded');
         }
 
+        let fileSize: number;
         try {
           await access(absolutePath);
-          const fileStat = await stat(absolutePath);
-
-          totalSizeBytes += fileStat.size;
-          if (totalSizeBytes > options.maxTotalBytes) {
-            throw new Error('Workspace size limit exceeded');
-          }
-
-          files.push({
-            absolutePath,
-            relativePath,
-            sizeBytes: fileStat.size,
-          });
-
-          entries.push({
-            path: relativePath,
-            type: 'FILE',
-          });
+          fileSize = (await stat(absolutePath)).size;
         } catch {
           skippedUnreadablePaths.push(relativePath);
+          continue;
         }
+
+        totalSizeBytes += fileSize;
+        if (totalSizeBytes > options.maxTotalBytes) {
+          throw new Error(`Workspace size limit exceeded (${totalSizeBytes} bytes). Limit: ${options.maxTotalBytes} bytes.`);
+        }
+
+        files.push({
+          absolutePath,
+          relativePath,
+          sizeBytes: fileSize,
+        });
+
       }
     }
   }
 
   return {
     files,
-    entries,
     fileCount,
     directoryCount,
     totalSizeBytes,

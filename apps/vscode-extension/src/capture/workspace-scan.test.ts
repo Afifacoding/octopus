@@ -26,7 +26,7 @@ describe('workspace scan', () => {
       });
 
       expect(result.fileCount).toBe(1);
-      expect(result.entries.some((entry) => entry.path.includes('workspace/src/pages'))).toBe(true);
+      expect(result.files.some((file) => file.relativePath === 'workspace/src/pages/home.tsx')).toBe(true);
       expect(result.excludedPaths.some((item) => item.includes('node_modules'))).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -49,6 +49,26 @@ describe('workspace scan', () => {
           maxTotalBytes: 100000,
         }),
       ).rejects.toThrow('File limit exceeded');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails capture when the workspace byte limit is exceeded instead of skipping the file', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'octopus-scan-size-'));
+
+    try {
+      await writeFile(path.join(root, 'large.txt'), '0123456789');
+
+      await expect(
+        scanWorkspace({
+          roots: [{ name: 'workspace', fsPath: root }],
+          exclusionMatcher: createExclusionMatcher({ customPatterns: [] }),
+          maxFiles: 50,
+          maxDirectories: 50,
+          maxTotalBytes: 5,
+        }),
+      ).rejects.toThrow('Workspace size limit exceeded (10 bytes). Limit: 5 bytes.');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

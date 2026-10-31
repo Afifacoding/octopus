@@ -83,7 +83,7 @@ export function createExclusionMatcher(options: {
   const activePatterns = [
     ...DEFAULT_EXCLUSION_PATTERNS,
     ...customPatterns,
-    ...(options.excludeSensitiveFiles ?? true ? SENSITIVE_PATTERNS : []),
+    ...(options.excludeSensitiveFiles ?? false ? SENSITIVE_PATTERNS : []),
   ];
 
   const matchers = activePatterns.map(globToRegex);

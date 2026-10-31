@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { octopusRequest } from './client';
+import { octopusRequest, octopusRequestWithStream } from './client';
 import { OctopusApiError } from './types';
 
 const originalFetch = global.fetch;
@@ -43,5 +43,44 @@ describe('octopus api client', () => {
     }) as typeof fetch;
 
     await expect(octopusRequest('/projects')).rejects.toBeInstanceOf(OctopusApiError);
+  });
+
+  it('streams request bytes with content length and reports upload progress', async () => {
+    let requestBody = '';
+    let requestHeaders: Headers | undefined;
+    global.fetch = vi.fn(async (_input, init) => {
+      requestHeaders = new Headers(init?.headers);
+      const stream = init?.body as unknown as AsyncIterable<Uint8Array>;
+      for await (const chunk of stream) {
+        requestBody += new TextDecoder().decode(chunk);
+      }
+
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ success: true, data: { snapshotId: 'snapshot_1' } }),
+      } as Response;
+    }) as typeof fetch;
+
+    const progress: Array<{ sent: number; total: number }> = [];
+    const chunks = [new TextEncoder().encode('{"archive":"'), new TextEncoder().encode('YQ=="}')];
+    const contentLength = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+
+    const result = await octopusRequestWithStream<{ snapshotId: string }>('/projects/project_1/snapshots', {
+      body: (async function* () {
+        for (const chunk of chunks) {
+          yield chunk;
+        }
+      })(),
+      contentLength,
+      cookie: 'octopus_session=test-session',
+      onUploadProgress: (sent, total) => progress.push({ sent, total }),
+    });
+
+    expect(result).toEqual({ snapshotId: 'snapshot_1' });
+    expect(requestBody).toBe('{"archive":"YQ=="}');
+    expect(requestHeaders?.get('content-length')).toBe(String(contentLength));
+    expect(requestHeaders?.get('cookie')).toBe('octopus_session=test-session');
+    expect(progress.at(-1)).toEqual({ sent: contentLength, total: contentLength });
   });
 });

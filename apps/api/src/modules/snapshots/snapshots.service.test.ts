@@ -620,6 +620,7 @@ describe('SnapshotsService', () => {
     expect(snapshot.fileCount).toBe(2);
     expect(snapshot.directoryCount).toBe(3);
     expect(snapshot.captureMetadata?.serverProcessed).toBeDefined();
+    expect(storage.readCalls).toHaveLength(0);
   });
 
   it('automatically triggers secret vault sync during snapshot processing', async () => {
@@ -732,6 +733,29 @@ describe('SnapshotsService', () => {
     expect(file.file.redactionApplied).toBe(true);
     expect(file.file.content).not.toContain('ghp_abcd1234abcd1234abcd1234');
     expect(file.file.content).toContain('****');
+  });
+
+  it('masks provider credentials from project source-code previews', async () => {
+    const apiKey = `AIza${'A'.repeat(35)}`;
+    const sourceArchive = await createZipBuffer([
+      { path: 'project/src/config.ts', content: `export const key = "${apiKey}";` },
+    ]);
+
+    const snapshot = await service.createSnapshot('user_1', 'project_1', {
+      captureSource: 'EXTENSION',
+      archive: {
+        fileName: 'project.zip',
+        contentType: 'application/zip',
+        base64Data: sourceArchive.toString('base64'),
+        sizeBytes: sourceArchive.byteLength,
+      },
+    });
+
+    const file = await service.getSnapshotFileContent('user_1', 'project_1', snapshot.id, 'project/src/config.ts');
+
+    expect(file.file.redactionApplied).toBe(true);
+    expect(file.file.content).not.toContain(apiKey);
+    expect(file.file.content).toContain('*');
   });
 
   it('treats .env.* as text preview and masks detected secret values', async () => {
@@ -968,7 +992,7 @@ describe('SnapshotsService', () => {
   });
 
   it('marks snapshot as failed when archive cannot be processed', async () => {
-    storage.shouldReturnInvalidArchive = true;
+    const invalidArchive = Buffer.from('not-a-zip');
 
     await expect(
       service.createSnapshot('user_1', 'project_1', {
@@ -976,8 +1000,8 @@ describe('SnapshotsService', () => {
         archive: {
           fileName: 'project.zip',
           contentType: 'application/zip',
-          base64Data: archiveBase64,
-          sizeBytes: archiveBuffer.byteLength,
+          base64Data: invalidArchive.toString('base64'),
+          sizeBytes: invalidArchive.byteLength,
         },
       }),
     ).rejects.toMatchObject({ code: 'SNAPSHOT_ARCHIVE_INVALID' });

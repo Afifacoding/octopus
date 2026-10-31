@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
+import { BrandLogo } from '../../components/branding/BrandLogo';
 import { SnapshotSearch } from './SnapshotSearch';
 import { useAuth } from '../../lib/auth/auth-context';
 
@@ -35,9 +36,12 @@ export function TopBar() {
 
   return (
     <header className="header">
-      <div>
-        <div className="eyebrow">{user?.username ?? 'Project Workspace'}</div>
-        <h1>Dashboard</h1>
+      <div className="dashboard-title-group">
+        <BrandLogo variant="mark" />
+        <div>
+          <div className="eyebrow">{user?.username ?? 'Project Workspace'}</div>
+          <h1>Dashboard</h1>
+        </div>
       </div>
 
       <div className="header-actions">

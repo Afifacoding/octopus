@@ -120,7 +120,7 @@ export async function runSnapshotCapture(options: {
           throw new Error(`Project archive is too large (${archive.sizeBytes} bytes). Limit: ${maxUploadBytes} bytes.`);
         }
 
-        progress.report({ message: 'Uploading snapshot...' });
+        progress.report({ message: 'Uploading snapshot... 0%' });
 
         const snapshotPayload: SnapshotCreateRequest = {
           captureSource: 'EXTENSION',
@@ -137,10 +137,8 @@ export async function runSnapshotCapture(options: {
           archive: {
             fileName: 'workspace.zip',
             contentType: 'application/zip',
-            base64Data: archive.base64Data,
             sizeBytes: archive.sizeBytes,
           },
-          entries: scanResult.entries,
         };
 
         const snapshotResponse = await createSnapshot({
@@ -148,6 +146,12 @@ export async function runSnapshotCapture(options: {
           cookie: sessionCookie,
           timeoutMs: getRequestTimeoutMs(),
           payload: snapshotPayload,
+          archivePath: archive.archivePath,
+          cancellationToken,
+          onUploadProgress(sentBytes, totalBytes) {
+            const percentage = totalBytes > 0 ? Math.min(100, Math.floor((sentBytes / totalBytes) * 100)) : 100;
+            progress.report({ message: `Uploading snapshot... ${percentage}%` });
+          },
         });
 
         progress.report({ message: 'Snapshot saved successfully.' });

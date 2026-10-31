@@ -357,7 +357,10 @@ describe('SecretsService', () => {
     storage = new FakeStorage();
 
     const archiveBuffer = await createZipBuffer([
-      { path: 'project/.env', content: 'API_KEY=sk_live_abcdefghijklmnop' },
+      {
+        path: 'project/.env',
+        content: 'API_KEY=sk_live_abcdefghijklmnop\nDATABASE_URL=postgresql://dbuser:dbpass@10.0.0.5:5432/octopus',
+      },
       { path: 'project/src/index.ts', content: 'console.log("ok")' },
     ]);
 
@@ -759,6 +762,29 @@ describe('SecretsService', () => {
     expect(detections.detections.every((item) => item.status === 'IMPORTED')).toBe(true);
   });
 
+  it('automatically imports labeled credentials found in project source files', async () => {
+    const googleApiKey = `AIza${'A'.repeat(35)}`;
+    const sourceArchive = await createZipBuffer([
+      { path: 'project/src/config.ts', content: `const googleKey = "${googleApiKey}";` },
+    ]);
+    const storageKey = 'user_1/project_1/snapshot_source/project.zip';
+    storage.archives.set(storageKey, sourceArchive);
+    repository.addSnapshot('user_1', 'project_1', 'snapshot_source', storageKey);
+
+    const imported = await service.autoImportSnapshotSecrets('user_1', 'project_1', 'snapshot_source');
+
+    expect(imported.createdCount).toBe(1);
+    const secrets = await service.listSecrets('user_1', 'project_1');
+    const secret = secrets.find((item) => item.label.startsWith('GOOGLE_API_KEY (config.ts:1)'));
+    expect(secret).toBeDefined();
+    expect(secret?.sourceFilePath).toBe('project/src/config.ts');
+    expect(secret?.maskedValue).not.toContain(googleApiKey);
+
+    const rawRecord = repository.secrets.find((item) => item.id === secret?.id);
+    expect(rawRecord?.encryptedValue).toBeTruthy();
+    expect(rawRecord?.encryptedValue).not.toContain(googleApiKey);
+  });
+
   it('does not create duplicate vault entries when auto-import runs repeatedly for same snapshot', async () => {
     await service.autoImportSnapshotSecrets('user_1', 'project_1', 'snapshot_1');
     const afterFirstImport = await service.listSecrets('user_1', 'project_1');
@@ -846,7 +872,7 @@ describe('SecretsService', () => {
       encryptionIv: 'iv',
       encryptionAuthTag: 'tag',
       encryptionVersion: 'v1',
-      sourceFilePath: 'project/src/modules/secrets/secrets.service.ts',
+      sourceFilePath: 'project/assets/archive.png',
       metadata: {
         source: 'snapshot-auto-detection',
       },

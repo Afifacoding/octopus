@@ -1,5 +1,5 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +11,6 @@ export type PreparedArchive = {
   archivePath: string;
   tempDir: string;
   sizeBytes: number;
-  base64Data: string;
 };
 
 export async function packageWorkspaceAsZip(options: {
@@ -37,7 +36,7 @@ export async function packageWorkspaceAsZip(options: {
   await mkdir(path.dirname(archivePath), { recursive: true });
 
   const output = createWriteStream(archivePath);
-  const archive = createArchive('zip', { zlib: { level: 9 } });
+  const archive = createArchive('zip', { zlib: { level: 1 } });
 
   const completed = new Promise<void>((resolve, reject) => {
     output.on('close', resolve);
@@ -60,13 +59,11 @@ export async function packageWorkspaceAsZip(options: {
   await completed;
 
   const archiveStat = await stat(archivePath);
-  const buffer = await readFile(archivePath);
 
   return {
     archivePath,
     tempDir,
     sizeBytes: archiveStat.size,
-    base64Data: buffer.toString('base64'),
   };
 }
 

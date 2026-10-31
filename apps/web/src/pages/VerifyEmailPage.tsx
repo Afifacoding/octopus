@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { BrandLogo } from '../components/branding/BrandLogo';
 import { requestOtp, verifyOtp } from '../lib/auth/auth-client';
 
 export function VerifyEmailPage() {
@@ -70,7 +71,7 @@ export function VerifyEmailPage() {
     <div className="auth">
       <form className="auth-card" onSubmit={onVerify}>
         <div className="auth-brand">
-          <div className="logo auth-logo">OCTO</div>
+          <BrandLogo variant="full" />
           <div className="brand-name auth-title">Verify Email</div>
           <div className="brand-sub">Enter the OTP sent to your Gmail address</div>
         </div>

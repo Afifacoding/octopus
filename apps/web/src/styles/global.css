@@ -57,6 +57,27 @@ a {
   font-weight: 700;
 }
 
+.brand-logo {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.brand-logo-full {
+  width: min(100%, 256px);
+  max-height: 256px;
+  height: auto;
+}
+
+.brand-logo-mark {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+
 .brand-name {
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -213,6 +234,13 @@ a {
   padding: 4px;
 }
 
+.mobile-drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .mobile-nav-close,
 .mobile-nav-toggle {
   border: 1px solid var(--border);
@@ -263,7 +291,15 @@ a {
 }
 
 .mobile-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+
+.mobile-header-brand .brand-logo-mark {
+  width: 32px;
+  height: 32px;
 }
 
 .mobile-header .brand-name {
@@ -278,6 +314,13 @@ a {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
+}
+
+.dashboard-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .header-actions {
@@ -598,6 +641,12 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.state-card > .brand-logo-mark {
+  width: 52px;
+  height: 52px;
+  align-self: center;
 }
 
 .projects-head {
@@ -1211,6 +1260,11 @@ a {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+}
+
+.auth-brand .brand-logo-full {
+  width: min(100%, 248px);
+  max-height: 248px;
 }
 
 .auth-logo {

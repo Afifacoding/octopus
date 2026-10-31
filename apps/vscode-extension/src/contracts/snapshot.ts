@@ -5,7 +5,6 @@ export type SnapshotCaptureSource = 'EXTENSION' | 'WEB' | 'API';
 export type SnapshotArchivePayload = {
   fileName: string;
   contentType: string;
-  base64Data: string;
   sizeBytes: number;
 };
 
@@ -17,10 +16,6 @@ export type SnapshotCreateRequest = {
   directoryCount?: number;
   metadata?: Record<string, unknown>;
   archive: SnapshotArchivePayload;
-  entries?: Array<{
-    path: string;
-    type: 'FILE' | 'DIRECTORY';
-  }>;
 };
 
 export type SnapshotRecord = {

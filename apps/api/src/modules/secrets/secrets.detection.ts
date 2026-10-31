@@ -7,6 +7,7 @@ import { assertSafeRelativePath } from '../../core/security/secure-file-path.js'
 import { maskSecretValue, secretFingerprint } from './secrets.crypto.js';
 import { inferSecretCategoryFromKey, shouldInspectForSecretDetection } from './secrets.protection-policy.js';
 import type { SecretCategory, SecretConfidence } from './secrets.types.js';
+import { env } from '../../config/env.js';
 
 type RawSecretDetection = {
   category: SecretCategory;
@@ -42,8 +43,8 @@ type DetectSecretsOptions = {
   maxPathLength: number;
 };
 
-const MAX_FILE_READ_BYTES = 512 * 1024;
-const MAX_TOTAL_READ_BYTES = 4 * 1024 * 1024;
+const MAX_FILE_READ_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_READ_BYTES = env.SNAPSHOT_MAX_TOTAL_BYTES;
 
 const rules: DetectionRule[] = [
   {
@@ -65,6 +66,48 @@ const rules: DetectionRule[] = [
     regex: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
   },
   {
+    id: 'github-fine-grained-token',
+    category: 'ACCESS_TOKEN',
+    confidence: 'HIGH',
+    regex: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+  },
+  {
+    id: 'gitlab-token',
+    category: 'ACCESS_TOKEN',
+    confidence: 'HIGH',
+    regex: /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
+  },
+  {
+    id: 'slack-token',
+    category: 'ACCESS_TOKEN',
+    confidence: 'HIGH',
+    regex: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+  },
+  {
+    id: 'google-api-key',
+    category: 'API_KEY',
+    confidence: 'HIGH',
+    regex: /\bAIza[0-9A-Za-z_-]{35}\b/g,
+  },
+  {
+    id: 'npm-token',
+    category: 'ACCESS_TOKEN',
+    confidence: 'HIGH',
+    regex: /\bnpm_[A-Za-z0-9]{20,}\b/g,
+  },
+  {
+    id: 'stripe-restricted-key',
+    category: 'API_KEY',
+    confidence: 'HIGH',
+    regex: /\brk_(?:live|test)_[A-Za-z0-9]{16,}\b/g,
+  },
+  {
+    id: 'openai-project-key',
+    category: 'API_KEY',
+    confidence: 'HIGH',
+    regex: /\bsk-proj-[A-Za-z0-9_-]{20,}\b/g,
+  },
+  {
     id: 'jwt-token',
     category: 'JWT',
     confidence: 'MEDIUM',
@@ -77,17 +120,11 @@ const rules: DetectionRule[] = [
     regex: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s'"`]+/gi,
   },
   {
-    id: 'private-key-block',
-    category: 'PRIVATE_KEY',
-    confidence: 'HIGH',
-    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
-  },
-  {
     id: 'key-value-secret',
     category: 'SECRET_KEY',
     confidence: 'MEDIUM',
     regex:
-      /\b([a-z0-9_.-]*?(?:secret|token|password|api[_-]?key|client[_-]?secret)[a-z0-9_.-]*)\b\s*[:=]\s*['"]?([^\s'"#;]{8,})/gi,
+      /\b([a-z0-9_.-]*?(?:secret|token|password|api[_-]?key|access[_-]?key|account[_-]?key|private[_-]?key|client[_-]?secret)[a-z0-9_.-]*)\b\s*[:=]\s*['"]?([^\s'"#;]{8,})/gi,
     valueExtractor: (_line, match) => match[2] ?? '',
     labelExtractor: (_line, match) => match[1]?.toUpperCase() ?? null,
   },
@@ -108,6 +145,26 @@ const rules: DetectionRule[] = [
     labelExtractor: (_line, match) => match[1]?.toUpperCase() ?? null,
   },
 ];
+
+const LABEL_BY_RULE: Record<string, string> = {
+  'aws-access-key': 'AWS_ACCESS_KEY_ID',
+  'database-connection-url': 'DATABASE_URL',
+  'github-fine-grained-token': 'GITHUB_TOKEN',
+  'github-token': 'GITHUB_TOKEN',
+  'gitlab-token': 'GITLAB_TOKEN',
+  'google-api-key': 'GOOGLE_API_KEY',
+  'jwt-token': 'JWT_TOKEN',
+  'npm-token': 'NPM_TOKEN',
+  'openai-project-key': 'OPENAI_API_KEY',
+  'private-key-block': 'PRIVATE_KEY',
+  'slack-token': 'SLACK_TOKEN',
+  'stripe-live-key': 'STRIPE_SECRET_KEY',
+  'stripe-restricted-key': 'STRIPE_RESTRICTED_KEY',
+};
+
+export function getSuggestedSecretLabel(detectionRule: string) {
+  return LABEL_BY_RULE[detectionRule] ?? null;
+}
 
 function normalizeArchivePath(inputPath: string, maxPathLength: number) {
   if (inputPath.includes('\u0000')) {
@@ -180,6 +237,7 @@ function isPlaceholderValue(value: string) {
 
 function findRuleMatches(line: string): RuleMatch[] {
   const matches: RuleMatch[] = [];
+  const seenValues = new Set<string>();
 
   for (const rule of rules) {
     rule.regex.lastIndex = 0;
@@ -187,7 +245,14 @@ function findRuleMatches(line: string): RuleMatch[] {
 
     while (match) {
       const matchedText = rule.valueExtractor ? rule.valueExtractor(line, match) : match[0] ?? '';
-      if (matchedText.length >= 8 && !isPlaceholderValue(matchedText)) {
+      const isPrivateKeyHeaderOnly = /^-----BEGIN [A-Z ]*PRIVATE KEY-----$/u.test(matchedText);
+      if (
+        matchedText.length >= 8 &&
+        !isPlaceholderValue(matchedText) &&
+        !isPrivateKeyHeaderOnly &&
+        !seenValues.has(matchedText)
+      ) {
+        seenValues.add(matchedText);
         matches.push({
           category: rule.category,
           confidence: rule.confidence,
@@ -207,6 +272,29 @@ function findRuleMatches(line: string): RuleMatch[] {
 function detectFromText(filePath: string, content: string): RawSecretDetection[] {
   const lines = content.split(/\r?\n/u);
   const detections: RawSecretDetection[] = [];
+  const privateKeyPattern = /-----BEGIN ([A-Z0-9 ]*PRIVATE KEY)-----[\s\S]+?-----END \1-----/gu;
+  let privateKeyMatch: RegExpExecArray | null;
+
+  while ((privateKeyMatch = privateKeyPattern.exec(content)) !== null) {
+    const rawValue = privateKeyMatch[0];
+    if (isPlaceholderValue(rawValue)) {
+      continue;
+    }
+
+    const sourceLineNumber = content.slice(0, privateKeyMatch.index).split(/\r?\n/u).length;
+    const keyType = privateKeyMatch[1]?.replace(/\s+/gu, '_') ?? 'PRIVATE_KEY';
+    detections.push({
+      category: 'PRIVATE_KEY',
+      confidence: 'HIGH',
+      detectionRule: 'private-key-block',
+      sourceFilePath: filePath,
+      sourceLineNumber,
+      maskedPreview: `-----BEGIN ${privateKeyMatch[1]}----- [REDACTED] -----END ${privateKeyMatch[1]}-----`,
+      fingerprint: secretFingerprint([filePath, `${sourceLineNumber}`, 'private-key-block', rawValue]),
+      rawValue,
+      metadata: { docsFiltered: false, secretLabel: keyType },
+    });
+  }
 
   const isDocsLike = filePath.toLowerCase().includes('readme') || filePath.toLowerCase().includes('docs');
   const base = path.posix.basename(filePath.toLowerCase());
@@ -291,7 +379,7 @@ export async function detectSecretsFromArchive(options: DetectSecretsOptions): P
           return;
         }
 
-        if (entry.uncompressedSize > MAX_FILE_READ_BYTES || totalRead >= MAX_TOTAL_READ_BYTES) {
+        if (entry.uncompressedSize > MAX_FILE_READ_BYTES || totalRead + entry.uncompressedSize > MAX_TOTAL_READ_BYTES) {
           zipFile.readEntry();
           return;
         }
