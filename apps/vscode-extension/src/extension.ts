@@ -6,6 +6,7 @@ import { connectOctopusAccount } from './commands/connect-account';
 import { openOctopusWeb } from './commands/open-web';
 import { selectOctopusProject } from './commands/select-project';
 import { startHeartbeat, stopHeartbeat } from './auth/heartbeat';
+import { initializeLogging } from './logging';
 import { WorkspaceItem, WorkspaceViewProvider } from './view/workspace-view';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -18,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   const viewProvider = new WorkspaceViewProvider(() => viewState);
 
+  initializeLogging(context);
   startHeartbeat(context);
 
   context.subscriptions.push(

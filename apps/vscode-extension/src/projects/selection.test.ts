@@ -157,4 +157,53 @@ describe('ensureProjectSelection', () => {
     expect(quickPickSpy).toHaveBeenCalledTimes(1);
     expect(selected?.id).toBe('project_3');
   });
+
+  it('passes the capture cancellation token to the project request and quick pick', async () => {
+    const context = createMockContext();
+    const projects = sampleProjects();
+    const token = { isCancellationRequested: false } as vscode.CancellationToken;
+    const statuses: string[] = [];
+
+    mocks.listProjects.mockResolvedValueOnce({ projects });
+    const quickPickSpy = vi.spyOn(vscode.window, 'showQuickPick').mockResolvedValueOnce({
+      label: 'octotest2026',
+      project: projects[0],
+    } as never);
+
+    const selected = await ensureProjectSelection({
+      context,
+      sessionCookie: 'session-cookie',
+      workspaceKey: 'new-workspace-key',
+      workspaceName: 'workspace',
+      cancellationToken: token,
+      onStatus: (message) => statuses.push(message),
+    });
+
+    expect(mocks.listProjects).toHaveBeenCalledWith(expect.objectContaining({ cancellationToken: token }));
+    expect(quickPickSpy).toHaveBeenCalledWith(expect.any(Array), expect.any(Object), token);
+    expect(statuses).toEqual(['Loading OCTOPUS projects...', 'Waiting for project selection...']);
+    expect(selected?.id).toBe('project_1');
+  });
+
+  it('does not open a prompt when capture was cancelled while projects were loading', async () => {
+    const context = createMockContext();
+    const token = { isCancellationRequested: false } as { isCancellationRequested: boolean };
+
+    mocks.listProjects.mockImplementationOnce(async () => {
+      token.isCancellationRequested = true;
+      return { projects: sampleProjects() };
+    });
+    const quickPickSpy = vi.spyOn(vscode.window, 'showQuickPick');
+
+    const selected = await ensureProjectSelection({
+      context,
+      sessionCookie: 'session-cookie',
+      workspaceKey: 'new-workspace-key',
+      workspaceName: 'workspace',
+      cancellationToken: token as vscode.CancellationToken,
+    });
+
+    expect(selected).toBeNull();
+    expect(quickPickSpy).not.toHaveBeenCalled();
+  });
 });

@@ -11,11 +11,14 @@ export type Project = {
   archivedAt: string | null;
 };
 
-export async function listProjects(options: { cookie: string; timeoutMs: number }) {
+type CancellationLike = { isCancellationRequested: boolean };
+
+export async function listProjects(options: { cookie: string; timeoutMs: number; cancellationToken?: CancellationLike }) {
   return octopusRequest<{ projects: Project[] }>('/projects?status=ACTIVE', {
     method: 'GET',
     cookie: options.cookie,
     timeoutMs: options.timeoutMs,
+    ...(options.cancellationToken ? { cancellationToken: options.cancellationToken } : {}),
   });
 }
 
@@ -24,11 +27,13 @@ export async function createProject(options: {
   timeoutMs: number;
   name: string;
   description?: string;
+  cancellationToken?: CancellationLike;
 }) {
   return octopusRequest<{ project: Project }>('/projects', {
     method: 'POST',
     cookie: options.cookie,
     timeoutMs: options.timeoutMs,
+    ...(options.cancellationToken ? { cancellationToken: options.cancellationToken } : {}),
     body: {
       name: options.name,
       ...(options.description !== undefined ? { description: options.description } : {}),

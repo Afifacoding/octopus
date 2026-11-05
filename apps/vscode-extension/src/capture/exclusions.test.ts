@@ -46,4 +46,35 @@ describe('capture exclusions', () => {
     expect(matcher.shouldExcludePath('workspace/debug.log')).toBe(true);
     expect(matcher.shouldExcludePath('workspace/config.ts')).toBe(false);
   });
+
+  it('identifies heavy directories for subtree pruning while keeping source directories', () => {
+    const matcher = createExclusionMatcher({ customPatterns: ['**/generated/**'], excludeSensitiveFiles: false });
+
+    for (const dir of [
+      'workspace/node_modules',
+      'workspace/packages/app/node_modules',
+      'workspace/.git',
+      'workspace/dist',
+      'workspace/build',
+      'workspace/.next',
+      'workspace/.nuxt',
+      'workspace/.svelte-kit',
+      'workspace/.turbo',
+      'workspace/__pycache__',
+      'workspace/.venv',
+      'workspace/generated',
+    ]) {
+      expect(matcher.shouldExcludeDirectory?.(dir), dir).toBe(true);
+    }
+
+    for (const dir of ['workspace/src', 'workspace/src/components', 'workspace/packages/app', 'workspace/docs']) {
+      expect(matcher.shouldExcludeDirectory?.(dir), dir).toBe(false);
+    }
+  });
+
+  it('keeps .env files available for Secret Vault detection unless sensitive exclusion is enabled', () => {
+    const permissive = createExclusionMatcher({ customPatterns: [], excludeSensitiveFiles: false });
+    expect(permissive.shouldExcludePath('workspace/.env')).toBe(false);
+    expect(permissive.shouldExcludePath('workspace/apps/api/.env.local')).toBe(false);
+  });
 });
