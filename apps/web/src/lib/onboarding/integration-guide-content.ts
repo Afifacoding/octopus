@@ -28,7 +28,12 @@ export type GuideStep = {
   instructions: GuideInstruction[];
   sections: GuideSection[];
   checklist: Array<{ id: string; label: string }>;
+  marketplaceLink?: { label: string; href: string };
 };
+
+// Verified against apps/vscode-extension/package.json (publisher.name) and the live Marketplace listing.
+export const OCTOPUS_GHOST_EXTENSION_ID = 'octopus-ghost.octopus-ghost';
+export const OCTOPUS_GHOST_MARKETPLACE_URL = `https://marketplace.visualstudio.com/items?itemName=${OCTOPUS_GHOST_EXTENSION_ID}`;
 
 export const EXCLUDED_FOLDERS = [
   'node_modules',
@@ -86,32 +91,36 @@ export const OPTIONAL_SENSITIVE_EXCLUSIONS = ['*.pem', '*.key', '*.p12', '*.pfx'
 export const INTEGRATION_GUIDE_STEPS: GuideStep[] = [
   {
     id: 'install-extension',
-    title: 'Install OCTOPUS Extension',
+    title: 'Install OCTOPUS Ghost',
     shortTitle: 'Install',
     icon: 'install',
     summary:
-      'OCTOPUS Ghost is distributed as a VSIX package. It is not published on the VS Code Marketplace yet, so you install it directly from the package file.',
+      'OCTOPUS Ghost is available on the Visual Studio Code Marketplace. Install it in a few clicks, straight from VS Code.',
+    marketplaceLink: {
+      label: 'View OCTOPUS Ghost on the Marketplace',
+      href: OCTOPUS_GHOST_MARKETPLACE_URL,
+    },
     instructions: [
       {
-        text: 'Obtain the official OCTOPUS Ghost VSIX package (for example `octopus-ghost-0.1.1.vsix`) from your OCTOPUS team.',
-        hint: 'Maintainers can build it from the repository by running `npm run package:vsix` inside `apps/vscode-extension`.',
+        text: 'Open **Visual Studio Code**.',
+        hint: 'VS Code 1.100 or later is required.',
       },
       {
-        text: 'Open **VS Code** (version 1.100 or later is required).',
+        text: 'Open the **Extensions** view with `Ctrl+Shift+X` (`Cmd+Shift+X` on macOS).',
       },
       {
-        text: 'Open the **Extensions** view from the Activity Bar, or press `Ctrl+Shift+X` (`Cmd+Shift+X` on macOS).',
+        text: 'Search for **OCTOPUS Ghost**.',
       },
       {
-        text: 'Click the **⋯ Views and More Actions** menu at the top of the Extensions view and choose **Install from VSIX...**',
-        hint: 'You can also run **Extensions: Install from VSIX...** from the Command Palette (`Ctrl+Shift+P`).',
+        text: 'Find the official **OCTOPUS Ghost** extension published by the verified publisher **OCTOPUS**.',
+        hint: `The extension identifier is \`${OCTOPUS_GHOST_EXTENSION_ID}\`.`,
       },
       {
-        text: 'Select the downloaded `.vsix` file and confirm. Reload VS Code if it asks you to.',
+        text: 'Click **Install**.',
       },
       {
-        text: 'Verify the installation: **OCTOPUS Ghost** appears in your installed extensions and an **OCTOPUS** icon appears in the Activity Bar.',
-        hint: 'Once the extension activates, a `OCTOPUS Save Snapshot` item also appears in the status bar.',
+        text: 'Once installed, find the **OCTOPUS** icon in the Activity Bar.',
+        hint: 'Once the extension activates, an `OCTOPUS Save Snapshot` item also appears in the status bar.',
       },
     ],
     sections: [
@@ -129,9 +138,9 @@ export const INTEGRATION_GUIDE_STEPS: GuideStep[] = [
       },
     ],
     checklist: [
-      { id: 'install-have-vsix', label: 'I have the official OCTOPUS Ghost .vsix package' },
-      { id: 'install-from-vsix', label: 'I installed it with "Install from VSIX..."' },
-      { id: 'install-see-icon', label: 'I can see the OCTOPUS icon in the Activity Bar' },
+      { id: 'install-found-marketplace', label: 'I found OCTOPUS Ghost on the VS Code Marketplace.' },
+      { id: 'install-installed', label: 'I installed the extension.' },
+      { id: 'install-see-icon', label: 'I can see OCTOPUS in the Activity Bar.' },
     ],
   },
   {

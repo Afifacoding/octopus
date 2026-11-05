@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { INTEGRATION_GUIDE_STEPS } from './integration-guide-content';
+import {
+  INTEGRATION_GUIDE_STEPS,
+  OCTOPUS_GHOST_EXTENSION_ID,
+  OCTOPUS_GHOST_MARKETPLACE_URL,
+} from './integration-guide-content';
 import {
   countCheckedItems,
   createEmptyProgress,
@@ -156,10 +160,24 @@ describe('integration guide content', () => {
     }
   });
 
-  it('does not contain external download or marketplace links', () => {
+  it('uses only the verified Marketplace listing as an external link', () => {
     const serialized = JSON.stringify(INTEGRATION_GUIDE_STEPS);
+    const urls = serialized.match(/https?:\/\/[^"\s]+/gu) ?? [];
 
-    expect(serialized).not.toMatch(/https?:\/\//u);
-    expect(serialized).not.toMatch(/marketplace\.visualstudio\.com/u);
+    expect(OCTOPUS_GHOST_EXTENSION_ID).toBe('octopus-ghost.octopus-ghost');
+    expect(OCTOPUS_GHOST_MARKETPLACE_URL).toBe(
+      'https://marketplace.visualstudio.com/items?itemName=octopus-ghost.octopus-ghost',
+    );
+    expect(new Set(urls)).toEqual(new Set([OCTOPUS_GHOST_MARKETPLACE_URL]));
+  });
+
+  it('has no manual VSIX installation instructions in any step', () => {
+    for (const step of INTEGRATION_GUIDE_STEPS) {
+      // Section chips list capture exclusion patterns (e.g. `*.vsix`), which are not install instructions.
+      const sections = step.sections.map(({ chips: _chips, ...section }) => section);
+      const text = JSON.stringify({ ...step, sections });
+
+      expect(text).not.toMatch(/vsix/iu);
+    }
   });
 });

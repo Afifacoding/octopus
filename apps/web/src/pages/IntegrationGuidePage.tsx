@@ -56,7 +56,10 @@ export function renderInline(text: string): ReactNode[] {
     });
 }
 
-const ICON_PATHS: Record<GuideIconName | 'check' | 'shield' | 'alert' | 'chevron' | 'arrowLeft' | 'arrowRight' | 'sparkle', string[]> = {
+const ICON_PATHS: Record<
+  GuideIconName | 'check' | 'shield' | 'alert' | 'chevron' | 'arrowLeft' | 'arrowRight' | 'sparkle' | 'external',
+  string[]
+> = {
   install: ['M12 3v12', 'm7 10 5 5 5-5', 'M5 21h14'],
   connect: [
     'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
@@ -73,6 +76,7 @@ const ICON_PATHS: Record<GuideIconName | 'check' | 'shield' | 'alert' | 'chevron
   arrowLeft: ['M19 12H5', 'm12 19-7-7 7-7'],
   arrowRight: ['M5 12h14', 'm12 5 7 7-7 7'],
   sparkle: ['M12 3v4', 'M12 17v4', 'M3 12h4', 'M17 12h4', 'm6 6 2 2', 'm16 16 2 2', 'm6 18 2-2', 'm16 8 2-2'],
+  external: ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'],
 };
 
 function GuideIcon({ name, className = '' }: { name: keyof typeof ICON_PATHS; className?: string }) {
@@ -320,6 +324,18 @@ export function IntegrationGuide({ storageKey, storage, steps = INTEGRATION_GUID
                 {activeStep.title}
               </h3>
               <p className="muted body-sm ig-step-summary">{activeStep.summary}</p>
+              {activeStep.marketplaceLink ? (
+                <a
+                  className="btn btn-secondary ig-external-link"
+                  href={activeStep.marketplaceLink.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {activeStep.marketplaceLink.label}
+                  <GuideIcon name="external" />
+                  <span className="ig-sr-only"> (opens in a new tab)</span>
+                </a>
+              ) : null}
             </div>
           </header>
 

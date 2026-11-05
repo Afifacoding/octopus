@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import { INTEGRATION_GUIDE_STEPS } from '../lib/onboarding/integration-guide-content';
+import { INTEGRATION_GUIDE_STEPS, OCTOPUS_GHOST_MARKETPLACE_URL } from '../lib/onboarding/integration-guide-content';
 import type { IntegrationGuideProgress } from '../lib/onboarding/integration-guide-progress';
 import { IntegrationGuide, renderInline } from './IntegrationGuidePage';
 
@@ -44,17 +44,31 @@ describe('IntegrationGuide', () => {
     expect(html).toContain('aria-valuenow="0"');
   });
 
-  it('starts on step one with VSIX install instructions, checklist and navigation', () => {
+  it('starts on step one with Marketplace install instructions, checklist and navigation', () => {
     const html = render();
 
     expect(html).toContain('Step 1 of 5');
+    expect(html).toContain('Install OCTOPUS Ghost');
     expect(html).toContain('aria-current="step"');
-    expect(html).toContain('Install from VSIX');
+    expect(html).toContain('Search for <strong>OCTOPUS Ghost</strong>');
+    expect(html).toContain('octopus-ghost.octopus-ghost');
+    expect(html).toContain('I found OCTOPUS Ghost on the VS Code Marketplace.');
+    expect(html).toContain('I installed the extension.');
+    expect(html).toContain('I can see OCTOPUS in the Activity Bar.');
+    expect(html).not.toMatch(/vsix/iu);
     expect(html).toContain('Checklist');
     expect(html).toContain('Mark step as completed');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*?Previous/u);
     expect(html).toContain('Next');
-    expect(html).not.toMatch(/href="https?:/u);
+  });
+
+  it('links only to the verified Marketplace listing, opening it safely in a new tab', () => {
+    const html = render();
+    const externalLinks = html.match(/href="https?:[^"]*"/gu) ?? [];
+
+    expect(externalLinks).toEqual([`href="${OCTOPUS_GHOST_MARKETPLACE_URL.replace(/&/gu, '&amp;')}"`]);
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
   });
 
   it('restores the saved step and checked items from storage', () => {
