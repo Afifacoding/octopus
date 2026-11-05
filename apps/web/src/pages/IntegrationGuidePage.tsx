@@ -326,7 +326,7 @@ export function IntegrationGuide({ storageKey, storage, steps = INTEGRATION_GUID
               <p className="muted body-sm ig-step-summary">{activeStep.summary}</p>
               {activeStep.marketplaceLink ? (
                 <a
-                  className="btn btn-secondary ig-external-link"
+                  className="btn btn-primary ig-external-link"
                   href={activeStep.marketplaceLink.href}
                   target="_blank"
                   rel="noopener noreferrer"

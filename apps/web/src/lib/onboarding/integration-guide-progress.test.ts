@@ -180,4 +180,28 @@ describe('integration guide content', () => {
       expect(text).not.toMatch(/vsix/iu);
     }
   });
+
+  it('keeps step one to the Marketplace install flow only', () => {
+    const [installStep] = INTEGRATION_GUIDE_STEPS;
+    if (!installStep) throw new Error('missing step');
+    const text = JSON.stringify(installStep);
+
+    expect(installStep.title).toBe('Install OCTOPUS Ghost');
+    expect(installStep.instructions).toHaveLength(6);
+    expect(installStep.instructions.every((instruction) => instruction.hint === undefined)).toBe(true);
+    expect(installStep.sections).toEqual([]);
+    expect(installStep.marketplaceLink).toEqual({
+      label: 'Install OCTOPUS Ghost',
+      href: OCTOPUS_GHOST_MARKETPLACE_URL,
+    });
+    expect(installStep.checklist.map((item) => item.label)).toEqual([
+      'I found OCTOPUS Ghost in the VS Code Marketplace.',
+      'I installed OCTOPUS Ghost.',
+      'I can see the OCTOPUS icon in the Activity Bar.',
+    ]);
+
+    for (const pattern of [/vsix/iu, /package/iu, /manual/iu, /download/iu, /obtain/iu, /maintainers/iu, /npm run/iu]) {
+      expect(text).not.toMatch(pattern);
+    }
+  });
 });

@@ -2393,15 +2393,13 @@ a {
 
 .ig-external-link {
   align-self: flex-start;
-  margin-top: 8px;
-  padding: 8px 14px;
-  font-size: 14px;
+  margin-top: 12px;
   text-decoration: none;
 }
 
 .ig-external-link .ig-icon {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 .ig-sr-only {

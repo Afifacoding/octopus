@@ -46,29 +46,65 @@ describe('IntegrationGuide', () => {
 
   it('starts on step one with Marketplace install instructions, checklist and navigation', () => {
     const html = render();
+    const text = html.replace(/<[^>]+>/gu, '').replace(/&quot;/gu, '"').replace(/&#x27;/gu, "'");
 
     expect(html).toContain('Step 1 of 5');
-    expect(html).toContain('Install OCTOPUS Ghost');
     expect(html).toContain('aria-current="step"');
-    expect(html).toContain('Search for <strong>OCTOPUS Ghost</strong>');
-    expect(html).toContain('octopus-ghost.octopus-ghost');
-    expect(html).toContain('I found OCTOPUS Ghost on the VS Code Marketplace.');
-    expect(html).toContain('I installed the extension.');
-    expect(html).toContain('I can see OCTOPUS in the Activity Bar.');
-    expect(html).not.toMatch(/vsix/iu);
+    expect(text).toContain('Install OCTOPUS Ghost');
+    expect(text).toContain(
+      "Get started with OCTOPUS Ghost directly from the Visual Studio Code Marketplace. Just search, install, and you're ready!",
+    );
+    for (const instruction of [
+      'Open Visual Studio Code.',
+      'Open Extensions using Ctrl + Shift + X.',
+      'Search for "OCTOPUS Ghost".',
+      'Find the official extension published by OCTOPUS.',
+      'Click Install.',
+      'Once installed, find the OCTOPUS icon in the Activity Bar.',
+    ]) {
+      expect(text).toContain(instruction);
+    }
+    expect(html.match(/class="ig-instruction"/gu)).toHaveLength(6);
+    expect(text).toContain('I found OCTOPUS Ghost in the VS Code Marketplace.');
+    expect(text).toContain('I installed OCTOPUS Ghost.');
+    expect(text).toContain('I can see the OCTOPUS icon in the Activity Bar.');
     expect(html).toContain('Checklist');
     expect(html).toContain('Mark step as completed');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*?Previous/u);
     expect(html).toContain('Next');
   });
 
-  it('links only to the verified Marketplace listing, opening it safely in a new tab', () => {
+  it('never renders the old VSIX installation instructions in step one', () => {
     const html = render();
-    const externalLinks = html.match(/href="https?:[^"]*"/gu) ?? [];
 
-    expect(externalLinks).toEqual([`href="${OCTOPUS_GHOST_MARKETPLACE_URL.replace(/&/gu, '&amp;')}"`]);
-    expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noopener noreferrer"');
+    const outdated = [
+      /vsix/iu,
+      /install from vsix/iu,
+      /package/iu,
+      /manual(ly)? install/iu,
+      /not published/iu,
+      /download/iu,
+      /obtain/iu,
+      /maintainers/iu,
+      /npm run/iu,
+    ];
+
+    for (const pattern of outdated) {
+      expect(html).not.toMatch(pattern);
+    }
+  });
+
+  it('shows a prominent Install OCTOPUS Ghost button linking to the Marketplace listing', () => {
+    const html = render();
+    const externalLinks = html.match(/<a[^>]*href="https?:[^"]*"[^>]*>.*?<\/a>/gu) ?? [];
+
+    expect(externalLinks).toHaveLength(1);
+    const [link = ''] = externalLinks;
+    expect(link).toContain(`href="${OCTOPUS_GHOST_MARKETPLACE_URL}"`);
+    expect(link).toContain('class="btn btn-primary ig-external-link"');
+    expect(link).toContain('Install OCTOPUS Ghost');
+    expect(link).toContain('target="_blank"');
+    expect(link).toContain('rel="noopener noreferrer"');
   });
 
   it('restores the saved step and checked items from storage', () => {

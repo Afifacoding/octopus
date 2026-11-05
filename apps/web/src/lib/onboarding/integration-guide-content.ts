@@ -95,52 +95,24 @@ export const INTEGRATION_GUIDE_STEPS: GuideStep[] = [
     shortTitle: 'Install',
     icon: 'install',
     summary:
-      'OCTOPUS Ghost is available on the Visual Studio Code Marketplace. Install it in a few clicks, straight from VS Code.',
+      "Get started with OCTOPUS Ghost directly from the Visual Studio Code Marketplace. Just search, install, and you're ready!",
     marketplaceLink: {
-      label: 'View OCTOPUS Ghost on the Marketplace',
+      label: 'Install OCTOPUS Ghost',
       href: OCTOPUS_GHOST_MARKETPLACE_URL,
     },
     instructions: [
-      {
-        text: 'Open **Visual Studio Code**.',
-        hint: 'VS Code 1.100 or later is required.',
-      },
-      {
-        text: 'Open the **Extensions** view with `Ctrl+Shift+X` (`Cmd+Shift+X` on macOS).',
-      },
-      {
-        text: 'Search for **OCTOPUS Ghost**.',
-      },
-      {
-        text: 'Find the official **OCTOPUS Ghost** extension published by the verified publisher **OCTOPUS**.',
-        hint: `The extension identifier is \`${OCTOPUS_GHOST_EXTENSION_ID}\`.`,
-      },
-      {
-        text: 'Click **Install**.',
-      },
-      {
-        text: 'Once installed, find the **OCTOPUS** icon in the Activity Bar.',
-        hint: 'Once the extension activates, an `OCTOPUS Save Snapshot` item also appears in the status bar.',
-      },
+      { text: 'Open **Visual Studio Code**.' },
+      { text: 'Open **Extensions** using `Ctrl + Shift + X`.' },
+      { text: 'Search for **"OCTOPUS Ghost"**.' },
+      { text: 'Find the official extension published by **OCTOPUS**.' },
+      { text: 'Click **Install**.' },
+      { text: 'Once installed, find the **OCTOPUS** icon in the Activity Bar.' },
     ],
-    sections: [
-      {
-        id: 'install-commands',
-        title: 'Commands added by the extension',
-        paragraphs: ['After installation, these commands are available from the Command Palette:'],
-        chips: [
-          'OCTOPUS: Open Control Panel',
-          'OCTOPUS: Connect Account',
-          'OCTOPUS: Select Project',
-          'OCTOPUS: Save Snapshot',
-          'OCTOPUS: Open Web App',
-        ],
-      },
-    ],
+    sections: [],
     checklist: [
-      { id: 'install-found-marketplace', label: 'I found OCTOPUS Ghost on the VS Code Marketplace.' },
-      { id: 'install-installed', label: 'I installed the extension.' },
-      { id: 'install-see-icon', label: 'I can see OCTOPUS in the Activity Bar.' },
+      { id: 'install-found-marketplace', label: 'I found OCTOPUS Ghost in the VS Code Marketplace.' },
+      { id: 'install-installed', label: 'I installed OCTOPUS Ghost.' },
+      { id: 'install-see-icon', label: 'I can see the OCTOPUS icon in the Activity Bar.' },
     ],
   },
   {
