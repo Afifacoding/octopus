@@ -1450,12 +1450,194 @@ a {
   color: var(--foreground);
 }
 
+.octo-header-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.octo-select-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--foreground-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.octo-select-label select,
+.octo-graph-list input,
+.octo-path-controls select {
+  min-width: 150px;
+  max-width: 220px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.octo-toolbar-button {
+  padding: 8px 11px;
+  border: 1px solid color-mix(in oklab, var(--teal) 35%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--teal) 8%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.octo-toolbar-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.octo-graph-panel {
+  flex: 0 0 auto;
+  max-height: 48vh;
+  overflow: auto;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 86%, var(--teal) 14%);
+}
+
+.octo-graph-heading,
+.octo-graph-metrics,
+.octo-path-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.octo-graph-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.octo-graph-heading h2,
+.octo-graph-detail h3 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+.octo-graph-heading p,
+.octo-graph-detail p {
+  margin: 4px 0;
+  color: var(--foreground-muted);
+  font-size: 12px;
+}
+
+.octo-graph-metrics span {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.octo-graph-summary,
+.octo-graph-empty,
+.octo-traced-path {
+  color: var(--foreground-muted);
+  font-size: 12px;
+}
+
+.octo-graph-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(300px, 1.4fr);
+  gap: 12px;
+}
+
+.octo-graph-list,
+.octo-graph-detail {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--background) 72%, transparent);
+}
+
+.octo-graph-list input {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.octo-graph-nodes {
+  display: grid;
+  gap: 4px;
+  max-height: 200px;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.octo-graph-nodes button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.octo-graph-nodes button.is-selected {
+  border-color: color-mix(in oklab, var(--teal) 55%, var(--border));
+  background: color-mix(in oklab, var(--teal) 10%, transparent);
+}
+
+.octo-graph-nodes span {
+  overflow: hidden;
+  color: var(--foreground-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-graph-detail ul {
+  margin: 6px 0 12px;
+  padding-left: 18px;
+  color: var(--foreground-muted);
+  font-size: 11px;
+}
+
+.octo-path-controls select {
+  flex: 1 1 140px;
+  max-width: none;
+}
+
+.octo-path-controls button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--teal);
+  color: white;
+  cursor: pointer;
+}
+
+.octo-path-controls button:disabled {
+  opacity: 0.45;
+}
+
 .octo-status-indicator {
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--mint);
   box-shadow: 0 0 0 6px color-mix(in oklab, var(--mint) 18%, transparent);
+}
+
+.octo-status-indicator.is-offline {
+  background: #e6a23c;
+  box-shadow: 0 0 0 6px color-mix(in oklab, #e6a23c 18%, transparent);
 }
 
 .octo-page-welcome {
@@ -1582,7 +1764,7 @@ a {
 .octo-message-content {
   display: flex;
   gap: 8px;
-  max-width: 70%;
+  max-width: 82%;
   align-items: flex-end;
 }
 
@@ -1613,6 +1795,73 @@ a {
   font-size: 14px;
   line-height: 1.45;
   color: var(--foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.octo-patch-proposal {
+  width: min(680px, 100%);
+  margin-top: 12px;
+  border: 1px solid color-mix(in oklab, var(--teal) 35%, var(--border));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.octo-patch-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  background: color-mix(in oklab, var(--teal) 8%, var(--card));
+  color: var(--foreground);
+  font-size: 11px;
+}
+
+.octo-patch-heading div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.octo-patch-heading span {
+  color: var(--foreground-muted);
+  overflow-wrap: anywhere;
+}
+
+.octo-patch-proposal pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.octo-patch-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.octo-patch-actions button {
+  padding: 7px 10px;
+  border: 1px solid color-mix(in oklab, var(--teal) 35%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--teal) 10%, transparent);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.octo-patch-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .octo-message-error {
@@ -1709,10 +1958,70 @@ a {
   flex: 0 0 auto;
   padding: 16px 24px;
   border-top: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   background: var(--card);
+}
+
+.octo-mode-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.octo-mode-toolbar button {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--foreground-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.octo-mode-toolbar button.is-active {
+  border-color: var(--teal);
+  background: color-mix(in oklab, var(--teal) 13%, transparent);
+  color: var(--foreground);
+}
+
+.octo-mode-toolbar .octo-attach-button {
+  margin-left: auto;
+  color: var(--foreground);
+}
+
+.octo-attachment-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--foreground-muted);
+  font-size: 12px;
+}
+
+.octo-attachment-preview img,
+.octo-message-image {
+  max-width: 120px;
+  max-height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  object-fit: contain;
+}
+
+.octo-attachment-preview button {
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  cursor: pointer;
+}
+
+.octo-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
 }
 
 .octo-input {
@@ -1769,6 +2078,10 @@ a {
 }
 
 @media (max-width: 768px) {
+  .octo-message-content {
+    max-width: 100%;
+  }
+
   .octo-page-header {
     padding: 16px;
   }
@@ -1795,11 +2108,34 @@ a {
   }
 
   .octo-message-content {
-    max-width: 85%;
+    max-width: 100%;
+  }
+
+  .octo-header-tools {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .octo-page-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .octo-graph-panel {
+    max-height: 42vh;
+    padding: 12px 16px;
+  }
+
+  .octo-graph-grid {
+    grid-template-columns: 1fr;
   }
 
   .octo-input-form {
     padding: 12px 16px;
+  }
+
+  .octo-select-label select {
+    min-width: 120px;
   }
 
   .octo-quick-actions-grid {

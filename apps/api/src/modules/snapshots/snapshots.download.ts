@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
+import path from 'node:path';
 import type { Readable } from 'node:stream';
 
+import { createTwoFilesPatch } from 'diff';
 import yauzl from 'yauzl';
 import yazl from 'yazl';
 
@@ -12,6 +14,30 @@ import { isEnvFilePath, shouldFullyMaskValue, shouldMaskForSnapshot } from '../s
 const MAX_SANITIZE_FILE_BYTES = 2 * 1024 * 1024;
 
 const ENV_ASSIGNMENT_PATTERN = /^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.+)$/gm;
+const AI_SOURCE_EXTENSIONS = new Set([
+  '.c', '.cc', '.cpp', '.cs', '.go', '.h', '.hpp', '.html', '.java', '.js', '.jsx', '.json', '.md',
+  '.php', '.py', '.rb', '.rs', '.sql', '.ts', '.tsx', '.vue', '.yaml', '.yml',
+]);
+const AI_IGNORED_PATH_SEGMENTS = new Set([
+  '.git', '.next', '.octo-backup', 'build', 'coverage', 'dist', 'node_modules', 'target', 'vendor',
+]);
+const MAX_AI_SOURCE_FILE_BYTES = 256 * 1024;
+const MAX_AI_SOURCE_TOTAL_BYTES = 2 * 1024 * 1024;
+const MAX_AI_SOURCE_FILES = 500;
+
+export type SanitizedSnapshotSourceFile = {
+  path: string;
+  content: string;
+};
+
+export type SanitizedSnapshotSourceFiles = {
+  files: SanitizedSnapshotSourceFile[];
+  truncated: boolean;
+};
+
+export function createSnapshotFileDiff(filePath: string, originalContent: string, proposedContent: string) {
+  return createTwoFilesPatch(filePath, filePath, originalContent, proposedContent, 'snapshot', 'proposed');
+}
 
 function isLikelyBinaryBuffer(buffer: Buffer) {
   if (buffer.byteLength === 0) {
@@ -205,6 +231,29 @@ function buildZipBuffer(entries: ZipEntryPayload[]): Promise<Buffer> {
   });
 }
 
+export async function replaceZipEntryContent(options: {
+  archiveBuffer: Buffer;
+  targetPath: string;
+  proposedContent: string;
+}): Promise<Buffer> {
+  const entries = await readZipEntries(options.archiveBuffer);
+  let replaced = false;
+  const nextEntries = entries.map((entry) => {
+    if (entry.path !== options.targetPath) return entry;
+    if (entry.isDirectory) {
+      throw new HttpError(400, 'SNAPSHOT_PATCH_TARGET_INVALID', 'Patch target must be a file');
+    }
+    replaced = true;
+    return { ...entry, buffer: Buffer.from(options.proposedContent, 'utf8') };
+  });
+
+  if (!replaced) {
+    throw new HttpError(404, 'SNAPSHOT_FILE_NOT_FOUND', 'Patch target was not found in the selected snapshot');
+  }
+
+  return buildZipBuffer(nextEntries);
+}
+
 export async function buildSanitizedSnapshotZip(options: {
   archiveBuffer: Buffer;
   maxPathLength: number;
@@ -270,6 +319,47 @@ export async function buildSanitizedSnapshotZip(options: {
   const buffer = await buildZipBuffer(sanitizedEntries);
 
   return { buffer, sanitizedFileCount, totalFileCount };
+}
+
+export async function extractSanitizedSnapshotSourceFiles(options: {
+  archiveBuffer: Buffer;
+  maxPathLength: number;
+}): Promise<SanitizedSnapshotSourceFiles> {
+  const sanitizedArchive = await buildSanitizedSnapshotZip(options);
+  const entries = await readZipEntries(sanitizedArchive.buffer);
+  const files: SanitizedSnapshotSourceFile[] = [];
+  let totalBytes = 0;
+  let truncated = false;
+
+  for (const entry of entries) {
+    if (entry.isDirectory) continue;
+
+    const normalizedPath = entry.path.replace(/\\/g, '/');
+    const segments = normalizedPath.split('/').filter(Boolean);
+    const fileName = path.posix.basename(normalizedPath).toLowerCase();
+    const extension = path.posix.extname(fileName);
+
+    if (
+      isEnvFilePath(normalizedPath) ||
+      segments.some((segment) => AI_IGNORED_PATH_SEGMENTS.has(segment.toLowerCase())) ||
+      ['credentials', 'id_rsa', 'private-key', 'private_key', 'secrets'].some((term) => fileName.includes(term)) ||
+      !AI_SOURCE_EXTENSIONS.has(extension) ||
+      entry.buffer.byteLength > MAX_AI_SOURCE_FILE_BYTES ||
+      isLikelyBinaryBuffer(entry.buffer)
+    ) {
+      continue;
+    }
+
+    if (files.length >= MAX_AI_SOURCE_FILES || totalBytes + entry.buffer.byteLength > MAX_AI_SOURCE_TOTAL_BYTES) {
+      truncated = true;
+      break;
+    }
+
+    files.push({ path: normalizedPath, content: entry.buffer.toString('utf8') });
+    totalBytes += entry.buffer.byteLength;
+  }
+
+  return { files, truncated };
 }
 
 export function buildSnapshotDownloadFileName(projectName: string | null, snapshotId: string) {

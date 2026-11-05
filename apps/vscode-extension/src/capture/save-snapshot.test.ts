@@ -62,8 +62,8 @@ vi.mock('../config', () => ({
   getCaptureAnalyzeSecrets: () => true,
   getCaptureMaxDirectories: () => 100,
   getCaptureMaxFiles: () => 100,
-  getCaptureMaxTotalBytes: () => 100000,
-  getCaptureMaxUploadBytes: () => 100000,
+  getCaptureMaxTotalBytes: () => 150000000,
+  getCaptureMaxUploadBytes: () => 31457280,
   getRequestTimeoutMs: () => 1000,
   getWebBaseUrl: () => 'http://localhost:5173',
 }));
@@ -146,7 +146,7 @@ describe('runSnapshotCapture archive cleanup', () => {
     mocks.packageWorkspaceAsZip.mockResolvedValueOnce({
       archivePath: 'large-archive.zip',
       tempDir: 'large-temp-dir',
-      sizeBytes: 100001,
+      sizeBytes: 31457280 + 1,
     });
     const showError = vi.spyOn(vscode.window, 'showErrorMessage');
 
@@ -155,5 +155,53 @@ describe('runSnapshotCapture archive cleanup', () => {
     expect(showError).toHaveBeenCalledWith(expect.stringContaining('Project archive is too large'));
     expect(mocks.createSnapshot).not.toHaveBeenCalled();
     expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('large-temp-dir');
+  });
+
+  it('accepts archives larger than 700 KB (old limit)', async () => {
+    mocks.packageWorkspaceAsZip.mockResolvedValueOnce({
+      archivePath: 'large-archive.zip',
+      tempDir: 'temp-dir',
+      sizeBytes: 1.5 * 1024 * 1024,
+    });
+    const showError = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    await runSnapshotCapture({ context: {} as never, updateView: () => undefined });
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(mocks.createSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('temp-dir');
+  });
+
+  it('accepts archives near 30 MiB limit', async () => {
+    const nearLimitBytes = 30 * 1024 * 1024 - 1024;
+    mocks.packageWorkspaceAsZip.mockResolvedValueOnce({
+      archivePath: 'large-archive.zip',
+      tempDir: 'temp-dir',
+      sizeBytes: nearLimitBytes,
+    });
+    const showError = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    await runSnapshotCapture({ context: {} as never, updateView: () => undefined });
+
+    expect(showError).not.toHaveBeenCalled();
+    expect(mocks.createSnapshot).toHaveBeenCalledTimes(1);
+    const callArgs = mocks.createSnapshot.mock.calls[0]?.[0];
+    expect((callArgs?.payload as any)?.archive?.sizeBytes).toBe(nearLimitBytes);
+    expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('temp-dir');
+  });
+
+  it('rejects archives exceeding 30 MiB limit', async () => {
+    mocks.packageWorkspaceAsZip.mockResolvedValueOnce({
+      archivePath: 'oversized-archive.zip',
+      tempDir: 'oversized-temp-dir',
+      sizeBytes: 30 * 1024 * 1024 + 1,
+    });
+    const showError = vi.spyOn(vscode.window, 'showErrorMessage');
+
+    await runSnapshotCapture({ context: {} as never, updateView: () => undefined });
+
+    expect(showError).toHaveBeenCalledWith(expect.stringContaining('Project archive is too large'));
+    expect(mocks.createSnapshot).not.toHaveBeenCalled();
+    expect(mocks.cleanupTemporaryArchive).toHaveBeenCalledWith('oversized-temp-dir');
   });
 });

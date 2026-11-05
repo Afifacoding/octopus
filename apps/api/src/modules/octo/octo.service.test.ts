@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OctoService } from './octo.service.js';
 import { matchIntent, extractProjectName, getContextualProjectId } from './octo.intents.js';
 import { checkSecurityBoundary } from './octo.security.js';
+import type { OctobotAiProvider } from './octo.ai-provider.js';
 import type { WorkspaceContext } from './octo.types.js';
 
 describe('Octo Intent Matching', () => {
@@ -140,7 +141,7 @@ describe('Octo Response Generation', () => {
       updateProject: vi.fn(),
       createProject: vi.fn(),
       archiveProject: vi.fn(),
-    } as any;
+    } as never;
 
     const mockSnapshotsRepository = {
       listSnapshotsByProject: vi.fn((projectId: string) => {
@@ -154,9 +155,20 @@ describe('Octo Response Generation', () => {
       updateSnapshot: vi.fn(),
       deleteSnapshot: vi.fn(),
       deleteSnapshotWithDependencies: vi.fn(),
-    } as any;
+    } as never;
 
-    service = new OctoService(mockProjectsRepository, mockSnapshotsRepository);
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      generateReply: vi.fn(async (question: string, _history: unknown[], context: WorkspaceContext) => {
+        const intent = matchIntent(question).intent;
+        if (intent === 'PROJECT_COUNT') return `${context.projectCount} projects`;
+        if (intent === 'PROJECT_LIST') return context.projects.map((project) => project.name).join('\n');
+        if (intent === 'SNAPSHOT_COUNT') return `${context.snapshotCount} snapshots`;
+        return 'OCTOBOT response';
+      }),
+    } as unknown as OctobotAiProvider;
+
+    service = new OctoService(mockProjectsRepository, mockSnapshotsRepository, aiProvider);
   });
 
   it('should answer PROJECT_COUNT correctly', async () => {
@@ -244,11 +256,11 @@ describe('Octo getSummary', () => {
           },
         ]),
       ),
-    } as any;
+    } as never;
 
     const mockSnapshotsRepository = {
       listSnapshotsByProject: vi.fn(() => Promise.resolve(Array(3).fill({}))),
-    } as any;
+    } as never;
 
     const service = new OctoService(mockProjectsRepository, mockSnapshotsRepository);
     const summary = await service.getSummary('user-1');
@@ -257,5 +269,110 @@ describe('Octo getSummary', () => {
     expect(summary.snapshotCount).toBe(3);
     expect(summary.greeting).toBeDefined();
     expect(summary.suggestions).toBeDefined();
+  });
+});
+
+describe('OCTOBOT provider integration', () => {
+  it('uses the configured provider and excludes blocked credential questions from history', async () => {
+    const generateReply = vi.fn().mockResolvedValue('OCTOBOT can explain recursion.');
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      generateReply,
+    } as unknown as OctobotAiProvider;
+    const service = new OctoService(
+      { listProjects: vi.fn().mockResolvedValue([]) } as never,
+      {} as never,
+      aiProvider,
+    );
+
+    const response = await service.ask({
+      question: 'Explain recursion',
+      pageContext: 'DASHBOARD',
+      userId: 'user-1',
+      history: [
+        { role: 'user', content: 'What is my API key?' },
+        { role: 'user', content: 'Explain functions' },
+        { role: 'assistant', content: 'Functions package reusable behavior.' },
+      ],
+    });
+
+    expect(response.reply).toBe('OCTOBOT can explain recursion.');
+    expect(response.summary.projectCount).toBe(0);
+    expect(generateReply).toHaveBeenCalledWith(
+      'Explain recursion',
+      [
+        { role: 'user', content: 'Explain functions' },
+        { role: 'assistant', content: 'Functions package reusable behavior.' },
+      ],
+      expect.objectContaining({ projectCount: 0, snapshotCount: 0 }),
+      {},
+    );
+  });
+});
+
+describe('OCTOBOT patch proposals', () => {
+  it('requires owner approval and creates a derived snapshot from a validated proposal', async () => {
+    const generateReply = vi.fn().mockResolvedValue([
+      'I updated the requested constant.',
+      '```octobot-patch',
+      JSON.stringify({
+        filePath: 'project/src/index.ts',
+        summary: 'Increment the count',
+        proposedContent: 'export const count = 2;',
+      }),
+      '```',
+    ].join('\n'));
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      generateReply,
+    } as unknown as OctobotAiProvider;
+    const createPatchedSnapshot = vi.fn().mockResolvedValue({ id: 'derived-snapshot' });
+    const snapshotsService = {
+      getSnapshotSourceFiles: vi.fn().mockResolvedValue({
+        files: [{ path: 'project/src/index.ts', content: 'export const count = 1;' }],
+        truncated: false,
+      }),
+      getSnapshotFileContent: vi.fn().mockResolvedValue({
+        file: {
+          path: 'project/src/index.ts',
+          supported: true,
+          redactionApplied: false,
+          truncated: false,
+          content: 'export const count = 1;',
+        },
+      }),
+      createPatchedSnapshot,
+    };
+    const service = new OctoService(
+      { listProjects: vi.fn().mockResolvedValue([]) } as never,
+      {} as never,
+      aiProvider,
+      snapshotsService as never,
+    );
+
+    const response = await service.ask({
+      question: 'Please patch project/src/index.ts',
+      pageContext: 'DASHBOARD',
+      userId: 'owner-1',
+      projectId: 'project-1',
+      snapshotId: 'snapshot-1',
+      mode: 'project-assistant',
+    });
+
+    expect(response.patchProposal?.filePath).toBe('project/src/index.ts');
+    expect(response.patchProposal?.diff).toContain('+export const count = 2;');
+    await expect(service.approvePatch('another-user', response.patchProposal!.patchId)).rejects.toMatchObject({
+      code: 'OCTOBOT_PATCH_NOT_FOUND',
+    });
+    await expect(service.approvePatch('owner-1', response.patchProposal!.patchId))
+      .resolves.toMatchObject({ id: 'derived-snapshot' });
+    expect(createPatchedSnapshot).toHaveBeenCalledWith(
+      'owner-1',
+      'project-1',
+      'snapshot-1',
+      'project/src/index.ts',
+      'export const count = 1;',
+      'export const count = 2;',
+    );
   });
 });

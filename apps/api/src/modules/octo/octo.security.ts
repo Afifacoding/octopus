@@ -15,6 +15,7 @@ const SENSITIVE_KEYWORDS = [
   'secret',
   'credentials',
   'credential',
+  'api key',
   // Tokens & Auth
   'token',
   'jwt',
@@ -126,6 +127,11 @@ export function isBlockedIntent(intent: string): boolean {
 export function sanitizeTextForOcto(text: string): string {
   // Mask assignment patterns
   const patterns = [
+    /(sk-(?:proj-)?[a-zA-Z0-9_-]{20,})/g,
+    /(AIza[0-9A-Za-z_-]{35})/g,
+    /(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
+    /(AKIA[0-9A-Z]{16})/g,
+    /(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi,
     /password\s*[:=]\s*[^\s,;]+/gi,
     /api[_-]?key\s*[:=]\s*[^\s,;]+/gi,
     /secret\s*[:=]\s*[^\s,;]+/gi,
@@ -136,7 +142,9 @@ export function sanitizeTextForOcto(text: string): string {
 
   let sanitized = text;
   for (const pattern of patterns) {
-    sanitized = sanitized.replace(pattern, '[REDACTED]');
+    sanitized = sanitized.replace(pattern, (_match, prefix?: string) =>
+      prefix?.toLowerCase() === 'bearer ' ? `${prefix}[REDACTED]` : '[REDACTED]',
+    );
   }
 
   return sanitized;

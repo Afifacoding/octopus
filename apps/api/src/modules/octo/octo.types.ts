@@ -64,6 +64,9 @@ export type OctoIntentMatch = {
 export type OctoRequest = {
   question: string;
   pageContext: OctoPageContext;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  mode?: 'learn' | 'debug' | 'dsa' | 'code-review' | 'interview' | 'project-assistant';
+  images?: string[];
   projectId?: string | undefined;
   snapshotId?: string | undefined;
   userId: string;
@@ -74,12 +77,28 @@ export type OctoResponse = {
   intent: OctoIntentType;
   suggestions: string[];
   summary: OctoSummary;
+  patchProposal?: {
+    patchId: string;
+    filePath: string;
+    summary: string;
+    diff: string;
+    additions: number;
+    deletions: number;
+  };
 };
 
 export type OctoSummary = {
   greeting: string;
   projectCount: number;
   snapshotCount: number;
+  assistantMode: 'live' | 'offline';
+  projects: Array<{
+    id: string;
+    name: string;
+    color: string;
+    snapshotCount: number;
+    snapshots: Array<{ id: string; createdAt: string }>;
+  }>;
   suggestions: string[];
 };
 
@@ -92,6 +111,7 @@ export type WorkspaceContext = {
     name: string;
     color: string;
     snapshotCount: number;
+    snapshots?: Array<{ id: string; createdAt: string }>;
   }>;
   currentProjectId?: string;
   currentProjectName?: string;

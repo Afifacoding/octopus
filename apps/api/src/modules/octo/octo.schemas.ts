@@ -15,8 +15,23 @@ export const octoPageContextSchema = z.enum([
 export const octoRequestSchema = z.object({
   question: z.string().min(1).max(2000),
   pageContext: octoPageContextSchema,
+  history: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string().max(8000),
+  })).max(12).optional(),
+  mode: z.enum(['learn', 'debug', 'dsa', 'code-review', 'interview', 'project-assistant']).optional(),
+  images: z.array(z.string().regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i).max(1_500_000)).max(1).optional(),
   projectId: z.string().uuid().optional(),
   snapshotId: z.string().uuid().optional(),
+});
+
+export const octoGraphQuerySchema = z.object({
+  projectId: z.string().uuid(),
+  snapshotId: z.string().uuid(),
+});
+
+export const octoPatchParamsSchema = z.object({
+  patchId: z.string().uuid(),
 });
 
 export type OctoRequestPayload = z.infer<typeof octoRequestSchema>;
@@ -29,8 +44,24 @@ export const octoResponseSchema = z.object({
     greeting: z.string(),
     projectCount: z.number().nonnegative(),
     snapshotCount: z.number().nonnegative(),
+    assistantMode: z.enum(['live', 'offline']),
+    projects: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      color: z.string(),
+      snapshotCount: z.number().nonnegative(),
+      snapshots: z.array(z.object({ id: z.string(), createdAt: z.string() })),
+    })),
     suggestions: z.array(z.string()),
   }),
+  patchProposal: z.object({
+    patchId: z.string().uuid(),
+    filePath: z.string(),
+    summary: z.string(),
+    diff: z.string(),
+    additions: z.number().nonnegative(),
+    deletions: z.number().nonnegative(),
+  }).optional(),
 });
 
 export type OctoResponsePayload = z.infer<typeof octoResponseSchema>;

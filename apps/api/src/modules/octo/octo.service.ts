@@ -5,22 +5,42 @@
 
 import { ProjectsRepository } from '../projects/projects.repository.js';
 import { SnapshotsRepository } from '../snapshots/snapshots.repository.js';
+import { randomUUID } from 'node:crypto';
+import { createSnapshotFileDiff } from '../snapshots/snapshots.download.js';
 import { OctoContextBuilder } from './octo.context.js';
-import { OctoResponseEngine } from './octo.engine.js';
-import { matchIntent, getContextualProjectId, extractProjectName } from './octo.intents.js';
-import { checkSecurityBoundary } from './octo.security.js';
-import type { OctoPageContext, OctoRequest, OctoResponse, OctoSummary } from './octo.types.js';
+import { matchIntent } from './octo.intents.js';
+import { checkSecurityBoundary, isBlockedSensitiveRequest } from './octo.security.js';
+import { OctobotAiProvider } from './octo.ai-provider.js';
+import type { OctoRequest, OctoResponse, OctoSummary } from './octo.types.js';
+import { OctoProjectIntelligence } from './octo.project-intelligence.js';
+import type { SnapshotsService } from '../snapshots/snapshots.service.js';
+import { HttpError } from '../../core/errors/http-error.js';
+
+type PendingPatch = {
+  ownerId: string;
+  projectId: string;
+  snapshotId: string;
+  filePath: string;
+  summary: string;
+  originalContent: string;
+  proposedContent: string;
+};
 
 export class OctoService {
   private contextBuilder: OctoContextBuilder;
-  private responseEngine: OctoResponseEngine;
+  private readonly intelligenceCache = new Map<string, OctoProjectIntelligence>();
+  private readonly pendingPatches = new Map<string, PendingPatch>();
 
   constructor(
     private projectsRepository: ProjectsRepository,
     private snapshotsRepository: SnapshotsRepository,
+    private readonly aiProvider: OctobotAiProvider = new OctobotAiProvider(),
+    private readonly snapshotsService?: Pick<
+      SnapshotsService,
+      'getSnapshotSourceFiles' | 'getSnapshotFileContent' | 'createPatchedSnapshot'
+    >,
   ) {
     this.contextBuilder = new OctoContextBuilder(projectsRepository, snapshotsRepository);
-    this.responseEngine = new OctoResponseEngine();
   }
 
   async ask(request: OctoRequest): Promise<OctoResponse> {
@@ -30,23 +50,70 @@ export class OctoService {
     // 2. Check security boundary
     const securityCheck = checkSecurityBoundary(request.question, intentMatch);
     if (securityCheck.isBlocked) {
-      return this.createBlockedResponse(securityCheck.message || 'I cannot provide that information.', request);
+      return this.createBlockedResponse(securityCheck.message || 'I cannot provide that information.');
     }
 
     // 3. Build workspace context
     const context = await this.contextBuilder.buildContext(request.userId, request.projectId);
 
-    // 4. Handle project name extraction
-    let projectNameForResponse = extractProjectName(request.question);
-    if (!projectNameForResponse && request.projectId) {
-      const project = context.projects.find((p) => p.id === request.projectId);
-      if (project) {
-        projectNameForResponse = project.name;
+    let sourceSnippets: ReturnType<OctoProjectIntelligence['retrieveContext']> = [];
+    let graphContext = '';
+    let intelligence: OctoProjectIntelligence | null = null;
+    if (this.aiProvider.isConfigured() && request.projectId && request.snapshotId) {
+      intelligence = await this.getProjectIntelligence(request.userId, request.projectId, request.snapshotId);
+      sourceSnippets = intelligence.retrieveContext(request.question);
+      graphContext = intelligence.getGraphContext(request.question);
+    }
+
+    let patchSource = this.shouldProposePatch(request) ? intelligence?.getPatchSource(request.question) || null : null;
+    if (patchSource && request.projectId && request.snapshotId && this.snapshotsService) {
+      try {
+        const preview = await this.snapshotsService.getSnapshotFileContent(
+          request.userId,
+          request.projectId,
+          request.snapshotId,
+          patchSource.path,
+        );
+        if (
+          !preview.file.supported ||
+          preview.file.redactionApplied ||
+          preview.file.truncated ||
+          preview.file.content !== patchSource.content
+        ) {
+          patchSource = null;
+        }
+      } catch {
+        patchSource = null;
       }
     }
 
     // 5. Generate natural language response
-    const reply = this.responseEngine.generateResponse(intentMatch.intent, context, projectNameForResponse);
+    let reply: string;
+    let patchProposal: OctoResponse['patchProposal'];
+    if (this.aiProvider.isConfigured()) {
+      const history = (request.history || [])
+        .filter((message) => message.role !== 'user' || !isBlockedSensitiveRequest(message.content))
+        .slice(-10);
+      try {
+        const aiReply = await this.aiProvider.generateReply(request.question, history, context, {
+          ...(request.mode ? { mode: request.mode } : {}),
+          ...(sourceSnippets.length > 0 ? { sourceSnippets } : {}),
+          ...(graphContext ? { graphContext } : {}),
+          ...(request.images?.length ? { images: request.images } : {}),
+          ...(patchSource ? { patchSource, patchRequested: true } : {}),
+        });
+        reply = aiReply || 'OCTOBOT returned an empty response. Please try again.';
+        if (aiReply && patchSource && request.projectId && request.snapshotId) {
+          const parsed = this.parsePatchProposal(aiReply, request, patchSource);
+          reply = parsed.reply;
+          patchProposal = parsed.patchProposal;
+        }
+      } catch {
+        reply = 'OCTOBOT could not reach its configured AI provider. Please try again shortly.';
+      }
+    } else {
+      reply = 'OCTOBOT needs a configured AI provider. Set AI_PROVIDER and its matching API key in the API environment to start a conversation.';
+    }
 
     // 6. Generate suggestions for next questions
     const suggestions = this.generateSuggestions(intentMatch.intent, context);
@@ -59,6 +126,7 @@ export class OctoService {
       intent: intentMatch.intent,
       suggestions,
       summary,
+      ...(patchProposal ? { patchProposal } : {}),
     };
   }
 
@@ -67,10 +135,126 @@ export class OctoService {
     return this.buildSummary(context);
   }
 
+  async getProjectGraph(userId: string, projectId: string, snapshotId: string) {
+    const intelligence = await this.getProjectIntelligence(userId, projectId, snapshotId);
+    return intelligence.buildGraph();
+  }
+
+  async approvePatch(userId: string, patchId: string) {
+    const patch = this.pendingPatches.get(patchId);
+    if (!patch || patch.ownerId !== userId) {
+      throw new HttpError(404, 'OCTOBOT_PATCH_NOT_FOUND', 'Patch proposal not found');
+    }
+    if (!this.snapshotsService) {
+      throw new HttpError(503, 'OCTOBOT_PATCH_UNAVAILABLE', 'Snapshot patching is unavailable');
+    }
+
+    const snapshot = await this.snapshotsService.createPatchedSnapshot(
+      userId,
+      patch.projectId,
+      patch.snapshotId,
+      patch.filePath,
+      patch.originalContent,
+      patch.proposedContent,
+    );
+    this.pendingPatches.delete(patchId);
+    return snapshot;
+  }
+
+  rejectPatch(userId: string, patchId: string) {
+    const patch = this.pendingPatches.get(patchId);
+    if (!patch || patch.ownerId !== userId) {
+      throw new HttpError(404, 'OCTOBOT_PATCH_NOT_FOUND', 'Patch proposal not found');
+    }
+    this.pendingPatches.delete(patchId);
+    return { patchId, status: 'rejected' as const };
+  }
+
+  private shouldProposePatch(request: OctoRequest) {
+    return request.mode === 'project-assistant' &&
+      /\b(?:patch|fix|edit|modify|change|implement)\b/i.test(request.question);
+  }
+
+  private parsePatchProposal(
+    reply: string,
+    request: OctoRequest,
+    source: { path: string; content: string },
+  ): { reply: string; patchProposal?: NonNullable<OctoResponse['patchProposal']> } {
+    const match = reply.match(/```octobot-patch\s*\r?\n([\s\S]*?)```/i);
+    if (!match?.[1] || !request.projectId || !request.snapshotId) return { reply };
+
+    const explanation = reply.replace(match[0], '').trim();
+    try {
+      const value = JSON.parse(match[1]) as Record<string, unknown>;
+      if (
+        value.filePath !== source.path ||
+        typeof value.summary !== 'string' ||
+        typeof value.proposedContent !== 'string' ||
+        value.proposedContent.length === 0 ||
+        value.proposedContent.length > 32_000
+      ) {
+        throw new Error('Invalid patch proposal');
+      }
+
+      const patchId = randomUUID();
+      const summary = value.summary.slice(0, 300);
+      const unifiedDiff = createSnapshotFileDiff(source.path, source.content, value.proposedContent);
+      const additions = unifiedDiff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).length;
+      const deletions = unifiedDiff.split('\n').filter((line) => line.startsWith('-') && !line.startsWith('---')).length;
+
+      this.pendingPatches.set(patchId, {
+        ownerId: request.userId,
+        projectId: request.projectId,
+        snapshotId: request.snapshotId,
+        filePath: source.path,
+        summary,
+        originalContent: source.content,
+        proposedContent: value.proposedContent,
+      });
+      if (this.pendingPatches.size > 20) {
+        const oldestId = this.pendingPatches.keys().next().value;
+        if (oldestId) this.pendingPatches.delete(oldestId);
+      }
+
+      return {
+        reply: explanation || 'OCTOBOT prepared a patch proposal for review.',
+        patchProposal: { patchId, filePath: source.path, summary, diff: unifiedDiff, additions, deletions },
+      };
+    } catch {
+      return { reply: `${explanation}\n\nOCTOBOT could not validate the proposed patch. No snapshot was changed.`.trim() };
+    }
+  }
+
+  private async getProjectIntelligence(userId: string, projectId: string, snapshotId: string) {
+    if (!this.snapshotsService) {
+      throw new HttpError(503, 'OCTOBOT_INDEXING_UNAVAILABLE', 'Snapshot indexing is unavailable');
+    }
+
+    const cacheKey = `${userId}:${projectId}:${snapshotId}`;
+    const cached = this.intelligenceCache.get(cacheKey);
+    if (cached) return cached;
+
+    const snapshotSource = await this.snapshotsService.getSnapshotSourceFiles(userId, projectId, snapshotId);
+    const intelligence = new OctoProjectIntelligence(projectId, snapshotId, snapshotSource.files);
+    this.intelligenceCache.set(cacheKey, intelligence);
+    if (this.intelligenceCache.size > 8) {
+      const oldestKey = this.intelligenceCache.keys().next().value;
+      if (oldestKey) this.intelligenceCache.delete(oldestKey);
+    }
+
+    return intelligence;
+  }
+
   private buildSummary(context: {
     projectCount: number;
     snapshotCount: number;
-    projects: Array<{ id: string; name: string; color: string; snapshotCount: number }>;
+    projects: Array<{
+      id: string;
+      name: string;
+      color: string;
+      snapshotCount: number;
+      snapshots?: Array<{ id: string; createdAt: string }>;
+    }>;
     currentProjectName?: string;
   }): OctoSummary {
     const greeting = this.generateGreeting(context.currentProjectName);
@@ -81,15 +265,23 @@ export class OctoService {
       greeting,
       projectCount: context.projectCount,
       snapshotCount: context.snapshotCount,
+      assistantMode: this.aiProvider.isConfigured() ? 'live' : 'offline',
+      projects: context.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        color: project.color,
+        snapshotCount: project.snapshotCount,
+        snapshots: project.snapshots || [],
+      })),
       suggestions,
     };
   }
 
   private generateGreeting(currentProjectName?: string): string {
     const greetings = [
-      "Hi! I'm Octo 🐙",
-      "Hey there! I'm Octo 🐙",
-      "Welcome back! I'm Octo 🐙",
+      "Hi! I'm OCTOBOT 🐙",
+      "Hey there! I'm OCTOBOT 🐙",
+      "Welcome back! I'm OCTOBOT 🐙",
     ];
 
     const base = greetings[Math.floor(Math.random() * greetings.length)];
@@ -98,7 +290,7 @@ export class OctoService {
       return `${base} I see you're working on "${currentProjectName}". How can I help?`;
     }
 
-    return `${base} I can help you understand your projects, snapshots, Blueprints, and OCTOPUS workflows.`;
+    return `${base} I can help with software development and your OCTOPUS workspace.`;
   }
 
   private generateDefaultSuggestions(context: {
@@ -189,11 +381,13 @@ export class OctoService {
     return suggestions.slice(0, 4); // Return top 4 suggestions
   }
 
-  private createBlockedResponse(message: string, request: OctoRequest): OctoResponse {
+  private createBlockedResponse(message: string): OctoResponse {
     const summary = {
       greeting: "I'm here to help with your OCTOPUS workspace.",
       projectCount: 0,
       snapshotCount: 0,
+      assistantMode: this.aiProvider.isConfigured() ? 'live' as const : 'offline' as const,
+      projects: [],
       suggestions: [
         'What is OCTOPUS?',
         'Show my projects',

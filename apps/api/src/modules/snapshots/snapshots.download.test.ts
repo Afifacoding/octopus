@@ -8,7 +8,9 @@ import { buildDirectoryTreeFromZip } from './snapshots.directory-tree.js';
 import {
   buildSanitizedSnapshotZip,
   buildSnapshotDownloadFileName,
+  extractSanitizedSnapshotSourceFiles,
   maskEnvAssignments,
+  replaceZipEntryContent,
   sanitizeFileContentForDownload,
 } from './snapshots.download.js';
 
@@ -249,5 +251,45 @@ describe('buildSanitizedSnapshotZip', () => {
     await expect(
       buildSanitizedSnapshotZip({ archiveBuffer: Buffer.from('not-a-zip'), maxPathLength: 400 }),
     ).rejects.toMatchObject({ code: 'SNAPSHOT_ARCHIVE_INVALID' });
+  });
+});
+
+describe('extractSanitizedSnapshotSourceFiles', () => {
+  it('returns bounded source files with secrets redacted and sensitive paths omitted', async () => {
+    const secret = 'sk-live-abcdef1234567890abcdef1234567890';
+    const archiveBuffer = await createZipBuffer([
+      { path: 'project/src/index.ts', content: `export const key = '${secret}';` },
+      { path: 'project/.env', content: `OPENAI_API_KEY=${secret}` },
+      { path: 'project/node_modules/lib/index.js', content: 'export const unsafe = true;' },
+      { path: 'project/README.md', content: '# Example project' },
+    ]);
+
+    const result = await extractSanitizedSnapshotSourceFiles({ archiveBuffer, maxPathLength: 400 });
+
+    expect(result.truncated).toBe(false);
+    expect(result.files.map((file) => file.path)).toEqual([
+      'project/src/index.ts',
+      'project/README.md',
+    ]);
+    expect(result.files[0]?.content).not.toContain(secret);
+  });
+});
+
+describe('replaceZipEntryContent', () => {
+  it('creates a new archive with the requested file changed and preserves the source archive', async () => {
+    const archiveBuffer = await createZipBuffer([
+      { path: 'project/src/index.ts', content: 'export const value = 1;' },
+      { path: 'project/README.md', content: '# Original' },
+    ]);
+
+    const patched = await replaceZipEntryContent({
+      archiveBuffer,
+      targetPath: 'project/src/index.ts',
+      proposedContent: 'export const value = 2;',
+    });
+
+    expect(await readZipEntryText(patched, 'project/src/index.ts')).toBe('export const value = 2;');
+    expect(await readZipEntryText(patched, 'project/README.md')).toBe('# Original');
+    expect(await readZipEntryText(archiveBuffer, 'project/src/index.ts')).toBe('export const value = 1;');
   });
 });

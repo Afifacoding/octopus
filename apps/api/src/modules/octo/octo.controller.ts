@@ -6,7 +6,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { HttpError } from '../../core/errors/http-error.js';
 import { OctoService } from './octo.service.js';
-import { octoRequestSchema } from './octo.schemas.js';
+import { octoGraphQuerySchema, octoPatchParamsSchema, octoRequestSchema } from './octo.schemas.js';
 import type { OctoRequestPayload } from './octo.schemas.js';
 
 export function createOctoController(octoService: OctoService) {
@@ -59,6 +59,9 @@ export function createOctoController(octoService: OctoService) {
         const response = await octoService.ask({
           question: payload.question,
           pageContext: payload.pageContext,
+          ...(payload.history ? { history: payload.history } : {}),
+          ...(payload.mode ? { mode: payload.mode } : {}),
+          ...(payload.images ? { images: payload.images } : {}),
           projectId: payload.projectId,
           snapshotId: payload.snapshotId,
           userId,
@@ -79,6 +82,33 @@ export function createOctoController(octoService: OctoService) {
           },
         });
       }
+    },
+
+    async graph(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      const query = octoGraphQuerySchema.parse(request.query);
+      const graph = await octoService.getProjectGraph(userId, query.projectId, query.snapshotId);
+      return reply.code(200).send({ success: true, data: graph });
+    },
+
+    async approvePatch(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      const { patchId } = octoPatchParamsSchema.parse(request.params);
+      const snapshot = await octoService.approvePatch(userId, patchId);
+      return reply.code(201).send({ success: true, data: { snapshot } });
+    },
+
+    async rejectPatch(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      const { patchId } = octoPatchParamsSchema.parse(request.params);
+      const result = octoService.rejectPatch(userId, patchId);
+      return reply.code(200).send({ success: true, data: result });
     },
   };
 }

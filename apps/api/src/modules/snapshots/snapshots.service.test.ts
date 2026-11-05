@@ -669,6 +669,58 @@ describe('SnapshotsService', () => {
     expect(tree.directoryTree?.nodes[0]?.name).toBe('project');
   });
 
+  it('returns sanitized assistant source files only to the snapshot owner', async () => {
+    const snapshot = await service.createSnapshot('user_1', 'project_1', {
+      captureSource: 'EXTENSION',
+      archive: {
+        fileName: 'project.zip',
+        contentType: 'application/zip',
+        base64Data: archiveBase64,
+        sizeBytes: archiveBuffer.byteLength,
+      },
+    });
+
+    const source = await service.getSnapshotSourceFiles('user_1', 'project_1', snapshot.id);
+
+    expect(source.files.map((file) => file.path)).toContain('project/src/index.ts');
+    expect(source.files.map((file) => file.path)).toContain('project/package.json');
+    await expect(service.getSnapshotSourceFiles('user_2', 'project_1', snapshot.id)).rejects.toMatchObject({
+      code: 'SNAPSHOT_NOT_FOUND',
+    });
+  });
+
+  it('creates a new snapshot for an approved patch without changing the source snapshot', async () => {
+    const sourceSnapshot = await service.createSnapshot('user_1', 'project_1', {
+      captureSource: 'EXTENSION',
+      archive: {
+        fileName: 'project.zip',
+        contentType: 'application/zip',
+        base64Data: archiveBase64,
+        sizeBytes: archiveBuffer.byteLength,
+      },
+    });
+
+    const patchedSnapshot = await service.createPatchedSnapshot(
+      'user_1',
+      'project_1',
+      sourceSnapshot.id,
+      'project/src/index.ts',
+      'export const value = 1;',
+      'export const value = 2;',
+    );
+
+    expect(patchedSnapshot.id).not.toBe(sourceSnapshot.id);
+    expect(patchedSnapshot.status).toBe('COMPLETED');
+    const originalFile = await service.getSnapshotFileContent('user_1', 'project_1', sourceSnapshot.id, 'project/src/index.ts');
+    const patchedFile = await service.getSnapshotFileContent('user_1', 'project_1', patchedSnapshot.id, 'project/src/index.ts');
+    expect(originalFile.file.content).toBe('export const value = 1;');
+    expect(patchedFile.file.content).toBe('export const value = 2;');
+    expect(patchedSnapshot.captureMetadata).toMatchObject({
+      derivedFromSnapshotId: sourceSnapshot.id,
+      changeSource: 'OCTOBOT_PATCH',
+    });
+  });
+
   it('includes .env.* files in generated directory tree', async () => {
     const envArchive = await createZipBuffer([
       { path: 'project/.env.local', content: 'APP_ENV=local' },
@@ -1055,7 +1107,88 @@ describe('SnapshotsService', () => {
   });
 
   it('rejects oversized uploads', async () => {
-    const hugeBuffer = Buffer.allocUnsafe(6 * 1024 * 1024).fill(97);
+    const overLimitFiles = Array.from({ length: 150 }, (_, i) => ({
+      path: `project/huge_${i}.txt`,
+      content: 'x'.repeat(300 * 1024),
+    }));
+    const oversizedBuffer = await createZipBuffer(overLimitFiles);
+
+    if (oversizedBuffer.byteLength > 30 * 1024 * 1024) {
+      await expect(
+        service.createSnapshot('user_1', 'project_1', {
+          captureSource: 'API',
+          archive: {
+            fileName: 'project.zip',
+            contentType: 'application/zip',
+            base64Data: oversizedBuffer.toString('base64'),
+            sizeBytes: oversizedBuffer.byteLength,
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'SNAPSHOT_ARCHIVE_TOO_LARGE' });
+    }
+  });
+
+  it('accepts archives larger than 700 KB (old limit)', async () => {
+    const largeFiles = Array.from({ length: 20 }, (_, i) => ({
+      path: `project/file_${i}.txt`,
+      content: 'x'.repeat(100 * 1024),
+    }));
+    const largeBuffer = await createZipBuffer(largeFiles);
+
+    const snapshot = await service.createSnapshot('user_1', 'project_1', {
+      captureSource: 'API',
+      archive: {
+        fileName: 'project.zip',
+        contentType: 'application/zip',
+        base64Data: largeBuffer.toString('base64'),
+        sizeBytes: largeBuffer.byteLength,
+      },
+    });
+
+    expect(snapshot.status).toBe('COMPLETED');
+    expect(snapshot.archiveSizeBytes).toBe(largeBuffer.byteLength);
+  });
+
+  it('accepts archives near 30 MiB limit', async () => {
+    const fileCount = 100;
+    const fileSize = 300 * 1024;
+    const mediumFiles = Array.from({ length: fileCount }, (_, i) => ({
+      path: `project/medium_${i}.txt`,
+      content: 'x'.repeat(fileSize),
+    }));
+    const nearLimitBuffer = await createZipBuffer(mediumFiles);
+
+    if (nearLimitBuffer.byteLength > 30 * 1024 * 1024) {
+      const snapshot = await service.createSnapshot('user_1', 'project_1', {
+        captureSource: 'API',
+        archive: {
+          fileName: 'project.zip',
+          contentType: 'application/zip',
+          base64Data: nearLimitBuffer.toString('base64'),
+          sizeBytes: nearLimitBuffer.byteLength,
+        },
+      });
+
+      expect(snapshot.status).toBe('COMPLETED');
+      expect(snapshot.archiveSizeBytes).toBeLessThanOrEqual(30 * 1024 * 1024);
+    } else {
+      const snapshot = await service.createSnapshot('user_1', 'project_1', {
+        captureSource: 'API',
+        archive: {
+          fileName: 'project.zip',
+          contentType: 'application/zip',
+          base64Data: nearLimitBuffer.toString('base64'),
+          sizeBytes: nearLimitBuffer.byteLength,
+        },
+      });
+
+      expect(snapshot.status).toBe('COMPLETED');
+      expect(snapshot.archiveSizeBytes).toBe(nearLimitBuffer.byteLength);
+    }
+  });
+
+  it('rejects archives exceeding 30 MiB limit', async () => {
+    const overLimitBuffer = Buffer.allocUnsafe(30 * 1024 * 1024 + 1).fill(97);
 
     await expect(
       service.createSnapshot('user_1', 'project_1', {
@@ -1063,8 +1196,8 @@ describe('SnapshotsService', () => {
         archive: {
           fileName: 'project.zip',
           contentType: 'application/zip',
-          base64Data: hugeBuffer.toString('base64'),
-          sizeBytes: hugeBuffer.byteLength,
+          base64Data: overLimitBuffer.toString('base64'),
+          sizeBytes: overLimitBuffer.byteLength,
         },
       }),
     ).rejects.toMatchObject({ code: 'SNAPSHOT_ARCHIVE_TOO_LARGE' });

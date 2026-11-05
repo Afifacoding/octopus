@@ -13,7 +13,12 @@ import type { SecretsService } from '../secrets/secrets.service.js';
 import { analyzeBlueprintFromSnapshot } from './snapshots.blueprint.js';
 import { assertBlueprintTransition } from './snapshots.blueprint.lifecycle.js';
 import { buildDirectoryTreeFromZip } from './snapshots.directory-tree.js';
-import { buildSanitizedSnapshotZip, buildSnapshotDownloadFileName } from './snapshots.download.js';
+import {
+  buildSanitizedSnapshotZip,
+  buildSnapshotDownloadFileName,
+  extractSanitizedSnapshotSourceFiles,
+  replaceZipEntryContent,
+} from './snapshots.download.js';
 import { assertSnapshotTransition } from './snapshots.lifecycle.js';
 import { SnapshotsRepository } from './snapshots.repository.js';
 import {
@@ -357,7 +362,7 @@ async function maskDetectedSecretsInText(options: {
 
   if (isEnvFilePath(options.filePath)) {
     output = output.replace(/^(\s*(?:export\s+)?)([A-Za-z_][A-Za-z0-9_]*)(\s*=\s*)(.+)$/gm, (line, prefix, key, separator, rawValue) => {
-      const normalizedValue = String(rawValue).trim().replace(/^['\"]|['\"]$/g, '');
+      const normalizedValue = String(rawValue).trim().replace(/^['"]|['"]$/g, '');
       if (!shouldMaskForSnapshot({ key: String(key), value: normalizedValue })) {
         return line;
       }
@@ -653,6 +658,87 @@ export class SnapshotsService {
         content: redaction.content,
       },
     };
+  }
+
+  async getSnapshotSourceFiles(ownerId: string, projectId: string, snapshotId: string) {
+    const snapshot = await this.findAuthorizedSnapshot(ownerId, projectId, snapshotId);
+
+    if (snapshot.status !== 'COMPLETED') {
+      throw new HttpError(409, 'SNAPSHOT_NOT_READY', 'Snapshot must be completed before assistant indexing');
+    }
+
+    if (!snapshot.archiveStorageKey) {
+      throw new HttpError(400, 'SNAPSHOT_ARCHIVE_MISSING', 'Snapshot archive is missing');
+    }
+
+    if (snapshot.archiveContentType !== 'application/zip' && snapshot.archiveContentType !== 'application/x-zip-compressed') {
+      throw new HttpError(
+        400,
+        'SNAPSHOT_ARCHIVE_UNSUPPORTED_FOR_PREVIEW',
+        'Assistant indexing currently supports ZIP archives only',
+      );
+    }
+
+    const archiveBuffer = await this.storage.readArchive(snapshot.archiveStorageKey);
+    return extractSanitizedSnapshotSourceFiles({
+      archiveBuffer,
+      maxPathLength: env.SNAPSHOT_MAX_PATH_LENGTH,
+    });
+  }
+
+  async createPatchedSnapshot(
+    ownerId: string,
+    projectId: string,
+    sourceSnapshotId: string,
+    filePath: string,
+    expectedOriginalContent: string,
+    proposedContent: string,
+  ) {
+    if (proposedContent.length > MAX_FILE_PREVIEW_BYTES) {
+      throw new HttpError(413, 'SNAPSHOT_PATCH_TOO_LARGE', 'Proposed file exceeds the patch size limit');
+    }
+
+    if (isEnvFilePath(filePath)) {
+      throw new HttpError(400, 'SNAPSHOT_PATCH_TARGET_SENSITIVE', 'Environment files cannot be patched by OCTOBOT');
+    }
+
+    const snapshot = await this.findAuthorizedSnapshot(ownerId, projectId, sourceSnapshotId);
+    if (!snapshot.archiveStorageKey || snapshot.status !== 'COMPLETED') {
+      throw new HttpError(409, 'SNAPSHOT_NOT_READY', 'A completed snapshot is required for patch approval');
+    }
+
+    const preview = await this.getSnapshotFileContent(ownerId, projectId, sourceSnapshotId, filePath);
+    if (!preview.file.supported || !preview.file.content || preview.file.redactionApplied || preview.file.truncated) {
+      throw new HttpError(409, 'SNAPSHOT_PATCH_TARGET_UNSAFE', 'Patch target is unavailable, masked, or truncated');
+    }
+    if (preview.file.content !== expectedOriginalContent) {
+      throw new HttpError(409, 'SNAPSHOT_PATCH_CONFLICT', 'Patch source no longer matches the proposal');
+    }
+
+    const archiveBuffer = await this.storage.readArchive(snapshot.archiveStorageKey);
+    const patchedArchive = await replaceZipEntryContent({
+      archiveBuffer,
+      targetPath: preview.file.path,
+      proposedContent,
+    });
+
+    return this.createSnapshot(ownerId, projectId, {
+      captureSource: 'WEB',
+      clientName: 'OCTOBOT',
+      ...(snapshot.fileCount !== null ? { fileCount: snapshot.fileCount } : {}),
+      ...(snapshot.directoryCount !== null ? { directoryCount: snapshot.directoryCount } : {}),
+      metadata: {
+        derivedFromSnapshotId: sourceSnapshotId,
+        changeSource: 'OCTOBOT_PATCH',
+        filePath: preview.file.path,
+      },
+      archive: {
+        fileName: 'octobot-patch.zip',
+        contentType: 'application/zip',
+        base64Data: patchedArchive.toString('base64'),
+        sizeBytes: patchedArchive.byteLength,
+      },
+    });
   }
 
   async createSnapshotBlueprint(

@@ -30,6 +30,16 @@ export class OctoContextBuilder {
           name: project.name,
           color: project.color || 'BLUE',
           snapshotCount: snapshots.length,
+          snapshots: snapshots.flatMap((snapshot) =>
+            snapshot.status === 'COMPLETED' && typeof snapshot.id === 'string'
+              ? [{
+                  id: snapshot.id,
+                  createdAt: snapshot.createdAt instanceof Date
+                    ? snapshot.createdAt.toISOString()
+                    : String(snapshot.createdAt || ''),
+                }]
+              : [],
+          ),
         };
       }),
     );
