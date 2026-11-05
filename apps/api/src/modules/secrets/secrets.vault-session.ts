@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import type { FastifyReply } from 'fastify';
 
@@ -51,8 +51,9 @@ export function readVaultSessionToken(token: string): VaultSessionPayload | null
     return null;
   }
 
-  const expected = signPayload(encodedPayload);
-  if (signature !== expected) {
+  const expected = Buffer.from(signPayload(encodedPayload));
+  const provided = Buffer.from(signature);
+  if (provided.byteLength !== expected.byteLength || !timingSafeEqual(provided, expected)) {
     return null;
   }
 

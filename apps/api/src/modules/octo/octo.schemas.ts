@@ -12,6 +12,9 @@ export const octoPageContextSchema = z.enum([
   'SETTINGS',
 ] as const satisfies readonly OctoPageContext[]);
 
+// Project and snapshot IDs are Prisma cuid() values, not UUIDs.
+const resourceIdSchema = z.string().min(1).max(128);
+
 export const octoRequestSchema = z.object({
   question: z.string().min(1).max(2000),
   pageContext: octoPageContextSchema,
@@ -21,13 +24,13 @@ export const octoRequestSchema = z.object({
   })).max(12).optional(),
   mode: z.enum(['learn', 'debug', 'dsa', 'code-review', 'interview', 'project-assistant']).optional(),
   images: z.array(z.string().regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i).max(1_500_000)).max(1).optional(),
-  projectId: z.string().uuid().optional(),
-  snapshotId: z.string().uuid().optional(),
+  projectId: resourceIdSchema.optional(),
+  snapshotId: resourceIdSchema.optional(),
 });
 
 export const octoGraphQuerySchema = z.object({
-  projectId: z.string().uuid(),
-  snapshotId: z.string().uuid(),
+  projectId: resourceIdSchema,
+  snapshotId: resourceIdSchema,
 });
 
 export const octoPatchParamsSchema = z.object({

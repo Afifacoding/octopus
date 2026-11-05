@@ -175,8 +175,8 @@ export class OctobotAiProvider {
       }
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-    const result = await this.postJson(url, { 'Content-Type': 'application/json' }, {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`;
+    const result = await this.postJson(url, { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey }, {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
       generationConfig: { temperature: 0.3, maxOutputTokens: 1600 },

@@ -37,4 +37,21 @@ describe('vault session token', () => {
     const tampered = `${token.token}tampered`;
     expect(readVaultSessionToken(tampered)).toBeNull();
   });
+
+  it('rejects a same-length forged signature', () => {
+    const token = createVaultSessionToken({ userId: 'user_1', projectId: 'project_1', ttlSeconds: 60 });
+    const [payload, signature] = token.token.split('.');
+    const forgedSignature = `${signature!.slice(0, -1)}${signature!.endsWith('A') ? 'B' : 'A'}`;
+
+    expect(readVaultSessionToken(`${payload}.${forgedSignature}`)).toBeNull();
+  });
+
+  it('rejects a payload swapped onto another token signature', () => {
+    const victim = createVaultSessionToken({ userId: 'user_1', projectId: 'project_1', ttlSeconds: 60 });
+    const attacker = createVaultSessionToken({ userId: 'user_2', projectId: 'project_2', ttlSeconds: 60 });
+    const [victimPayload] = victim.token.split('.');
+    const [, attackerSignature] = attacker.token.split('.');
+
+    expect(readVaultSessionToken(`${victimPayload}.${attackerSignature}`)).toBeNull();
+  });
 });

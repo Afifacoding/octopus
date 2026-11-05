@@ -68,6 +68,9 @@ describe('OctobotAiProvider', () => {
     expect(reply).toContain('[REDACTED]');
     expect(reply).not.toContain('sk-123456789012345678901234');
     expect(String(fetcher.mock.calls[0]?.[0])).toContain('generativelanguage.googleapis.com');
+    expect(String(fetcher.mock.calls[0]?.[0])).not.toContain('key=');
+    expect(String(fetcher.mock.calls[0]?.[0])).not.toContain('test-key');
+    expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ 'x-goog-api-key': 'test-key' });
     const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
       system_instruction: { parts: Array<{ text: string }> };
       contents: Array<{ parts: Array<{ inlineData?: { mimeType: string; data: string } }> }>;

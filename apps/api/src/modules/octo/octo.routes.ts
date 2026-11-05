@@ -14,6 +14,8 @@ import { AuthRepository } from '../auth/auth.repository.js';
 import { AuthMailer } from '../auth/auth.mailer.js';
 import { createSnapshotStorage } from '../snapshots/snapshots.storage.js';
 import { SnapshotsService } from '../snapshots/snapshots.service.js';
+import { SecretsRepository } from '../secrets/secrets.repository.js';
+import { SecretsService } from '../secrets/secrets.service.js';
 
 export async function registerOctoRoutes(app: FastifyInstance) {
   // Initialize auth middleware
@@ -25,7 +27,10 @@ export async function registerOctoRoutes(app: FastifyInstance) {
   // Initialize repositories and service
   const projectsRepository = new ProjectsRepository();
   const snapshotsRepository = new SnapshotsRepository();
-  const snapshotsService = new SnapshotsService(snapshotsRepository, createSnapshotStorage());
+  const snapshotsStorage = createSnapshotStorage();
+  // Patched snapshots must go through Secret Vault auto-import like any other capture.
+  const secretsService = new SecretsService(new SecretsRepository(), snapshotsStorage);
+  const snapshotsService = new SnapshotsService(snapshotsRepository, snapshotsStorage, secretsService);
   const octoService = new OctoService(projectsRepository, snapshotsRepository, undefined, snapshotsService);
   const controller = createOctoController(octoService);
 
