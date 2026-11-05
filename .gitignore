@@ -30,3 +30,9 @@ Thumbs.db
 
 # OCTOPUS runtime snapshot storage
 apps/api/.octopus-storage/
+
+# Generated VS Code extension package
+apps/vscode-extension/*.vsix
+
+# Local development dependencies
+apps/vscode-extension/node_modules-dev/

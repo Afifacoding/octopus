@@ -5,6 +5,7 @@ import { PublicRoute } from './auth/PublicRoute';
 import { AppShell } from './shell/AppShell';
 import { ErrorBoundaryPage } from './ui/ErrorBoundaryPage';
 import { DashboardPage } from '../pages/DashboardPage';
+import { IntegrationGuidePage } from '../pages/IntegrationGuidePage';
 import { LoginPage } from '../pages/LoginPage';
 import { OctoPage } from '../pages/OctoPage';
 import { PlaceholderPage } from '../pages/PlaceholderPage';
@@ -95,12 +96,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'integration-guide',
-        element: (
-          <PlaceholderPage
-            title="Integration Guide"
-            description="Extension integration workflows will be expanded in extension phases."
-          />
-        ),
+        element: <IntegrationGuidePage />,
       },
       {
         path: 'support',
