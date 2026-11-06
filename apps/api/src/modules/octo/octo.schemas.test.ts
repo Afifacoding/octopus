@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   octoCompareQuerySchema,
   octoGraphQuerySchema,
+  octoGraphSearchQuerySchema,
   octoPatchParamsSchema,
   octoProjectParamsSchema,
   octoRequestSchema,
@@ -29,6 +30,31 @@ describe('octo schemas', () => {
 
   it('accepts Prisma cuid IDs on graph queries', () => {
     expect(octoGraphQuerySchema.safeParse({ projectId: projectCuid, snapshotId: snapshotCuid }).success).toBe(true);
+  });
+
+  it('validates bounded Graphify search parameters', () => {
+    expect(octoGraphSearchQuerySchema.safeParse({
+      projectId: projectCuid,
+      snapshotId: snapshotCuid,
+      query: 'AuthService',
+    }).success).toBe(true);
+    expect(octoGraphSearchQuerySchema.safeParse({
+      projectId: projectCuid,
+      snapshotId: snapshotCuid,
+      query: '',
+    }).success).toBe(false);
+    expect(octoGraphSearchQuerySchema.safeParse({
+      projectId: projectCuid,
+      snapshotId: snapshotCuid,
+      query: 'auth',
+      pageSize: 51,
+    }).success).toBe(false);
+    expect(octoGraphSearchQuerySchema.safeParse({
+      projectId: projectCuid,
+      snapshotId: snapshotCuid,
+      query: 'auth',
+      nodeType: 'secret',
+    }).success).toBe(false);
   });
 
   it('rejects empty or oversized IDs', () => {

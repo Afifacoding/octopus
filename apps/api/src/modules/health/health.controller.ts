@@ -1,10 +1,21 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply } from 'fastify';
 
 import { getHealthStatus } from './health.service.js';
+import type { DatabaseHealthCheck } from './health.service.js';
 
-export async function healthController(_request: FastifyRequest, reply: FastifyReply) {
-  return reply.status(200).send({
-    success: true,
-    data: getHealthStatus(),
-  });
+type HealthReply = {
+  status(code: number): HealthReply;
+  send(payload: unknown): unknown;
+};
+
+export function createHealthController(checkDatabase?: DatabaseHealthCheck) {
+  return async (_request: unknown, reply: HealthReply | FastifyReply) => {
+    const status = await getHealthStatus(checkDatabase);
+    return reply.status(status.status === 'ok' ? 200 : 503).send({
+      success: status.status === 'ok',
+      data: status,
+    });
+  };
 }
+
+export const healthController = createHealthController();

@@ -8,6 +8,8 @@ import type {
   OctoConversation,
   OctoConversationDetails,
   OctoConversationMessageResult,
+  OctoProjectGraph,
+  OctoProjectRecommendations,
   OctoSummary,
 } from '../lib/octo/octo-client';
 
@@ -17,6 +19,8 @@ const api = vi.hoisted(() => ({
   deleteOctoConversation: vi.fn(),
   getOctoConversation: vi.fn(),
   getOctoGraph: vi.fn(),
+  getOctoModelCatalog: vi.fn(),
+  getOctoRecommendations: vi.fn(),
   getOctoSummary: vi.fn(),
   listOctoConversations: vi.fn(),
   rejectOctoPatch: vi.fn(),
@@ -112,6 +116,36 @@ beforeEach(() => {
   });
   api.getOctoConversation.mockResolvedValue(savedDetails);
   api.getOctoGraph.mockResolvedValue(null);
+  api.getOctoModelCatalog.mockResolvedValue({
+    active: { provider: 'gemini', model: 'gemini-2.0-flash' },
+    providers: [
+      {
+        id: 'gemini',
+        name: 'Google Gemini',
+        configured: true,
+        models: [{
+          id: 'gemini-2.0-flash',
+          name: 'Gemini 2.0 Flash',
+          description: 'Low-latency general assistant model.',
+          capabilities: ['Text', 'Images'],
+          configured: true,
+        }],
+      },
+      {
+        id: 'openai',
+        name: 'OpenAI',
+        configured: false,
+        models: [{
+          id: 'gpt-4o-mini',
+          name: 'GPT-4o mini',
+          description: 'Efficient general assistant model.',
+          capabilities: ['Text', 'Images'],
+          configured: false,
+        }],
+      },
+    ],
+  });
+  api.getOctoRecommendations.mockResolvedValue(null);
   api.approveOctoPatch.mockResolvedValue(null);
   api.rejectOctoPatch.mockResolvedValue(true);
 });
@@ -133,6 +167,57 @@ describe('OCTOBOT conversation history UI', () => {
     expect(projectSelect.value).toBe('proj-1');
     expect(projectSelect.disabled).toBe(true);
     expect(container.textContent).toContain('Project · API Project');
+  });
+
+  it('shows evidence-based platform recommendations for the selected project snapshot', async () => {
+    const result: OctoProjectRecommendations = {
+      projectId: 'proj-1',
+      snapshotId: 'snap-1',
+      analysisStatus: 'COMPLETE',
+      stack: {
+        languages: [{ name: 'TypeScript', fileCount: 3 }],
+        frameworks: ['React', 'Vite'],
+        packageManagers: ['pnpm'],
+        buildSystems: ['Vite'],
+        databases: [],
+        deploymentConfiguration: [],
+        configurationPaths: [],
+        manifestPaths: ['apps/web/package.json'],
+      },
+      recommendations: [{
+        id: 'vite-static-web',
+        category: 'WEB_HOSTING',
+        title: 'Deploy the Vite web build as a separate static site',
+        whyItFits: 'React and Vite are present in the project manifest.',
+        benefits: ['Uses the detected web build tool'],
+        limitations: ['Output configuration must be checked'],
+        integrationComplexity: 'MEDIUM',
+        alternatives: ['Any static file host after validation'],
+        evidence: ['apps/web/package.json'],
+        compatibilityNotes: ['No platform was tested.'],
+      }],
+      pricingAndAvailability: 'NOT_VERIFIED',
+    };
+    api.getOctoRecommendations.mockResolvedValue(result);
+    await renderPage();
+
+    await click(buttonByText('Platform recommendations'));
+    await flush();
+
+    expect(api.getOctoRecommendations).toHaveBeenCalledWith('proj-1', 'snap-1');
+    expect(container.textContent).toContain(result.recommendations[0]?.title);
+    expect(container.textContent).toContain('apps/web/package.json');
+    expect(container.textContent).toContain('Pricing and availability not verified');
+    expect(container.textContent).toContain('No platform was tested.');
+  });
+
+  it('shows an explicit error when platform recommendations are unavailable', async () => {
+    await renderPage();
+
+    await click(buttonByText('Platform recommendations'));
+    await flush();
+
+    expect(container.textContent).toContain('Recommendations could not be loaded for this snapshot.');
   });
 
   it('starts a new chat without deleting prior chats and persists a sent message', async () => {
@@ -163,8 +248,44 @@ describe('OCTOBOT conversation history UI', () => {
       content: 'Show my projects',
       snapshotId: 'snap-1',
       pageContext: 'DASHBOARD',
+      modelSelection: { provider: 'gemini', model: 'gemini-2.0-flash' },
     }));
     expect(container.textContent).toContain('You have one project.');
+  });
+
+  it('shows configured models, disables unavailable providers and submits the selected model', async () => {
+    const newConversation: OctoConversation = { ...projectConversation, id: 'conv-model' };
+    api.createOctoConversation.mockResolvedValue(newConversation);
+    api.sendOctoConversationMessage.mockResolvedValue({
+      conversation: newConversation,
+      userMessage: {
+        id: 'model-user', role: 'USER', content: 'Explain this code', metadata: null, createdAt: '2026-11-06T10:00:00.000Z',
+      },
+      assistantMessage: {
+        id: 'model-assistant',
+        role: 'ASSISTANT',
+        content: 'Use Promise.all for independent requests.\n\n```ts\nawait Promise.all(tasks);\n```',
+        metadata: { modelSelection: { provider: 'gemini', model: 'gemini-2.0-flash' } },
+        createdAt: '2026-11-06T10:00:01.000Z',
+      },
+    } satisfies OctoConversationMessageResult);
+    await renderPage();
+
+    const selector = container.querySelector('select[aria-label="AI model"]') as HTMLSelectElement;
+    expect(selector.value).toBe('gemini:gemini-2.0-flash');
+    expect(Array.from(selector.options).find((option) => option.value === 'openai:gpt-4o-mini')?.disabled).toBe(true);
+
+    await click(buttonByText('New Chat'));
+    await click(buttonByText('Show my projects'));
+    expect(api.sendOctoConversationMessage).toHaveBeenCalledWith('conv-model', expect.objectContaining({
+      modelSelection: { provider: 'gemini', model: 'gemini-2.0-flash' },
+    }));
+    expect(container.textContent).toContain('Google Gemini · Gemini 2.0 Flash');
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    await click(buttonByText('Copy'));
+    expect(writeText).toHaveBeenCalledWith('await Promise.all(tasks);');
+    expect(container.textContent).toContain('Copied');
   });
 
   it('allows switching project context before a new general chat', async () => {
@@ -221,6 +342,62 @@ describe('OCTOBOT conversation history UI', () => {
     await renderPage();
     expect(container.textContent).toContain("Couldn't load recent chats.");
     expect(container.textContent).toContain('Hi, I\'m OCTOBOT');
+  });
+
+  it('displays Graphify parser coverage and AST relationships', async () => {
+    const graph: OctoProjectGraph = {
+      projectId: 'proj-1',
+      snapshotId: 'snap-1',
+      generatedAt: '2026-11-06T09:00:00.000Z',
+      nodes: [
+        {
+          id: 'src/auth.ts',
+          label: 'auth.ts',
+          type: 'file',
+          filePath: 'src/auth.ts',
+          metrics: { inDegree: 0, outDegree: 1, centralityScore: 1, isGodNode: false },
+        },
+        {
+          id: 'src/auth.ts::AuthService@1',
+          label: 'AuthService',
+          type: 'class',
+          filePath: 'src/auth.ts',
+          line: 1,
+          metrics: { inDegree: 1, outDegree: 1, centralityScore: 3, isGodNode: true },
+        },
+      ],
+      edges: [
+        { source: 'src/auth.ts', target: 'src/auth.ts::AuthService@1', type: 'contains' },
+      ],
+      godNodes: [{
+        id: 'src/auth.ts::AuthService@1',
+        label: 'AuthService',
+        filePath: 'src/auth.ts',
+        metrics: { centralityScore: 3 },
+      }],
+      clusters: [{ name: 'Business Logic', description: 'Services', nodeIds: ['src/auth.ts::AuthService@1'] }],
+      metrics: { totalNodes: 2, totalEdges: 1, density: 0.25, averageDegree: 0.5 },
+      analysis: {
+        status: 'COMPLETE',
+        parser: 'typescript-compiler-api',
+        supportedLanguages: ['TypeScript'],
+        parsedFileCount: 1,
+        unsupportedFileCount: 0,
+        malformedFileCount: 0,
+        sourceTruncated: false,
+        graphTruncated: false,
+      },
+      report: { summary: '2 entities, 1 relationship.', riskAreas: [], recommendations: [] },
+    };
+    api.getOctoGraph.mockResolvedValue(graph);
+    await renderPage();
+
+    await click(buttonByText('Graphify'));
+
+    expect(container.textContent).toContain('Complete TypeScript/JavaScript analysis.');
+    expect(container.textContent).toContain('AuthService');
+    expect(container.textContent).toContain('Direct relationships');
+    expect(container.textContent).toContain('contains');
   });
 
   it('preserves the draft when a message request fails', async () => {

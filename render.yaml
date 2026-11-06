@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: octopus-api-bnh6
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --include=dev && npm run build -w @octopus/shared && npm run db:generate && npm run build -w @octopus/api
+    startCommand: npm run start -w @octopus/api
+    healthCheckPath: /api/v1/health
+    disk:
+      name: octopus-snapshots
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: CORS_ORIGIN
+        value: https://octopus-web-r33z.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: AUTH_SESSION_SECRET
+        sync: false
+      - key: AUTH_OTP_SECRET
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: VAULT_ENCRYPTION_KEY
+        sync: false
+      - key: SNAPSHOT_STORAGE_PROVIDER
+        value: local
+      - key: SNAPSHOT_STORAGE_LOCAL_ROOT
+        value: /var/data/snapshots
+      - key: MAX_REQUEST_SIZE_BYTES
+        value: '52428800'
+      - key: SNAPSHOT_MAX_ARCHIVE_SIZE_BYTES
+        value: '31457280'
+      - key: SNAPSHOT_MAX_TOTAL_BYTES
+        value: '150000000'
+
+  - type: web
+    name: octopus-web-r33z
+    runtime: static
+    buildCommand: npm ci --include=dev && npm run build -w @octopus/shared && npm run build -w @octopus/web
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://octopus-api-bnh6.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

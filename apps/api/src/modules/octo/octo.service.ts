@@ -19,6 +19,8 @@ import {
   type IntelligenceQuery,
 } from './octo.intelligence.js';
 import { OctoProjectIntelligence } from './octo.project-intelligence.js';
+import type { ProjectGraphNode } from './octo.project-intelligence.js';
+import { buildProjectRecommendations } from './octo.recommendations.js';
 import type { SnapshotsService } from '../snapshots/snapshots.service.js';
 import { HttpError } from '../../core/errors/http-error.js';
 
@@ -92,10 +94,15 @@ export class OctoService {
       };
     }
 
+    const modelIsConfigured = this.aiProvider.isConfigured(request.modelSelection);
+    if (request.modelSelection && !modelIsConfigured && request.throwOnAiFailure) {
+      throw new HttpError(503, 'OCTOBOT_MODEL_UNAVAILABLE', 'The selected provider or model is not configured');
+    }
+
     let sourceSnippets: ReturnType<OctoProjectIntelligence['retrieveContext']> = [];
     let graphContext = '';
     let intelligence: OctoProjectIntelligence | null = null;
-    if (this.aiProvider.isConfigured() && request.projectId && request.snapshotId) {
+    if (modelIsConfigured && request.projectId && request.snapshotId) {
       intelligence = await this.getProjectIntelligence(request.userId, request.projectId, request.snapshotId);
       sourceSnippets = intelligence.retrieveContext(request.question);
       graphContext = intelligence.getGraphContext(request.question);
@@ -126,13 +133,14 @@ export class OctoService {
     // 5. Generate natural language response
     let reply: string;
     let patchProposal: OctoResponse['patchProposal'];
-    if (this.aiProvider.isConfigured()) {
+    if (modelIsConfigured) {
       const history = (request.history || [])
         .filter((message) => message.role !== 'user' || !isBlockedSensitiveRequest(message.content))
         .slice(-10);
       try {
         const aiReply = await this.aiProvider.generateReply(request.question, history, context, {
           ...(request.mode ? { mode: request.mode } : {}),
+          ...(request.modelSelection ? { modelSelection: request.modelSelection } : {}),
           ...(sourceSnippets.length > 0 ? { sourceSnippets } : {}),
           ...(graphContext ? { graphContext } : {}),
           ...(request.images?.length ? { images: request.images } : {}),
@@ -169,7 +177,12 @@ export class OctoService {
       suggestions,
       summary,
       ...(patchProposal ? { patchProposal } : {}),
+      ...(modelIsConfigured && request.modelSelection ? { modelSelection: request.modelSelection } : {}),
     };
+  }
+
+  getModelCatalog() {
+    return this.aiProvider.getModelCatalog();
   }
 
   async getSummary(userId: string, projectId?: string): Promise<OctoSummary> {
@@ -197,6 +210,50 @@ export class OctoService {
   async getProjectGraph(userId: string, projectId: string, snapshotId: string) {
     const intelligence = await this.getProjectIntelligence(userId, projectId, snapshotId);
     return intelligence.buildGraph();
+  }
+
+  async getProjectRecommendations(userId: string, projectId: string, snapshotId: string) {
+    const intelligence = await this.getProjectIntelligence(userId, projectId, snapshotId);
+    return buildProjectRecommendations(
+      projectId,
+      snapshotId,
+      intelligence.getSourceFilesForAnalysis(),
+      intelligence.isSourceTruncated() ? 'PARTIAL' : 'COMPLETE',
+    );
+  }
+
+  async searchProjectGraph(
+    userId: string,
+    projectId: string,
+    snapshotId: string,
+    query: string,
+    nodeType?: ProjectGraphNode['type'],
+    page = 1,
+    pageSize = 20,
+  ) {
+    const graph = await this.getProjectGraph(userId, projectId, snapshotId);
+    const normalizedQuery = query.toLowerCase();
+    const matchingNodes = graph.nodes.filter((node) =>
+      (!nodeType || node.type === nodeType) &&
+      `${node.label} ${node.filePath} ${node.id}`.toLowerCase().includes(normalizedQuery));
+    const offset = (page - 1) * pageSize;
+    const nodes = matchingNodes.slice(offset, offset + pageSize);
+    const selectedIds = new Set(nodes.map((node) => node.id));
+    const relationships = graph.edges
+      .filter((edge) => selectedIds.has(edge.source) || selectedIds.has(edge.target))
+      .slice(0, 200);
+
+    return {
+      projectId,
+      snapshotId,
+      analysis: graph.analysis,
+      page,
+      pageSize,
+      total: matchingNodes.length,
+      hasMore: offset + nodes.length < matchingNodes.length,
+      nodes,
+      relationships,
+    };
   }
 
   async approvePatch(userId: string, patchId: string) {
@@ -294,7 +351,12 @@ export class OctoService {
     if (cached) return cached;
 
     const snapshotSource = await this.snapshotsService.getSnapshotSourceFiles(userId, projectId, snapshotId);
-    const intelligence = new OctoProjectIntelligence(projectId, snapshotId, snapshotSource.files);
+    const intelligence = new OctoProjectIntelligence(
+      projectId,
+      snapshotId,
+      snapshotSource.files,
+      snapshotSource.truncated,
+    );
     this.intelligenceCache.set(cacheKey, intelligence);
     if (this.intelligenceCache.size > 8) {
       const oldestKey = this.intelligenceCache.keys().next().value;

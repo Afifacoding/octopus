@@ -46,8 +46,27 @@ export async function registerOctoRoutes(app: FastifyInstance) {
 
   // Routes
   app.get('/octo/summary', { preHandler: requireAuth }, controller.summary);
-  app.post('/octo/ask', { preHandler: requireAuth }, controller.ask);
-  app.get('/octo/graph', { preHandler: requireAuth }, controller.graph);
+  app.get('/octo/models', { preHandler: requireAuth }, controller.models);
+  app.post(
+    '/octo/ask',
+    { preHandler: requireAuth, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    controller.ask,
+  );
+  app.get(
+    '/octo/graph',
+    { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    controller.graph,
+  );
+  app.get(
+    '/octo/recommendations',
+    { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    controller.recommendations,
+  );
+  app.get(
+    '/octo/graphify/search',
+    { preHandler: requireAuth, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    controller.graphSearch,
+  );
   app.post('/octo/patches/:patchId/approve', { preHandler: requireAuth }, controller.approvePatch);
   app.post('/octo/patches/:patchId/reject', { preHandler: requireAuth }, controller.rejectPatch);
 

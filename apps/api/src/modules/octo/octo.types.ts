@@ -12,6 +12,11 @@ export type OctoPageContext =
   | 'SECRET_VAULT'
   | 'SETTINGS';
 
+export type OctoModelSelection = {
+  provider: 'gemini' | 'openai' | 'openrouter';
+  model: string;
+};
+
 export type OctoIntentType =
   // Projects
   | 'PROJECT_COUNT'
@@ -66,6 +71,7 @@ export type OctoRequest = {
   pageContext: OctoPageContext;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   mode?: 'learn' | 'debug' | 'dsa' | 'code-review' | 'interview' | 'project-assistant';
+  modelSelection?: OctoModelSelection;
   images?: string[];
   projectId?: string | undefined;
   snapshotId?: string | undefined;
@@ -88,6 +94,7 @@ export type OctoResponse = {
     additions: number;
     deletions: number;
   };
+  modelSelection?: OctoModelSelection;
 };
 
 export type OctoSummary = {

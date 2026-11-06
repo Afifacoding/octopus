@@ -1583,6 +1583,7 @@ a {
 .octo-page-header {
   flex: 0 0 auto;
   padding: 24px;
+  gap: 24px;
   border-bottom: 1px solid var(--border);
   background: linear-gradient(
     135deg,
@@ -1601,8 +1602,14 @@ a {
 }
 
 .octo-page-icon {
-  font-size: 32px;
-  line-height: 1;
+  width: 52px;
+  height: 52px;
+  padding: 5px;
+  border: 1px solid color-mix(in oklab, var(--teal) 35%, var(--border));
+  border-radius: 15px;
+  background: color-mix(in oklab, var(--teal) 10%, var(--card));
+  object-fit: contain;
+  box-shadow: 0 8px 24px color-mix(in oklab, var(--teal) 14%, transparent);
 }
 
 .octo-page-title {
@@ -1636,6 +1643,7 @@ a {
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  max-width: min(100%, 980px);
 }
 
 .octo-select-label {
@@ -1789,6 +1797,20 @@ a {
   font-size: 11px;
 }
 
+.octo-graph-detail li + li {
+  margin-top: 4px;
+}
+
+.octo-graph-detail li button {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .octo-path-controls select {
   flex: 1 1 140px;
   max-width: none;
@@ -1832,9 +1854,15 @@ a {
 }
 
 .octo-welcome-icon {
-  font-size: 64px;
+  width: 88px;
+  height: 88px;
+  padding: 10px;
   margin-bottom: 16px;
-  line-height: 1;
+  border: 1px solid color-mix(in oklab, var(--teal) 35%, var(--border));
+  border-radius: 24px;
+  background: color-mix(in oklab, var(--teal) 9%, var(--card));
+  object-fit: contain;
+  box-shadow: 0 14px 36px color-mix(in oklab, var(--teal) 14%, transparent);
 }
 
 .octo-welcome-title {
@@ -1953,8 +1981,13 @@ a {
 }
 
 .octo-message-avatar {
-  font-size: 20px;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  padding: 3px;
+  border: 1px solid color-mix(in oklab, var(--teal) 30%, var(--border));
+  border-radius: 9px;
+  background: var(--card);
+  object-fit: contain;
   flex: 0 0 auto;
 }
 
@@ -1977,6 +2010,82 @@ a {
   color: var(--foreground);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.octo-message-text p + p {
+  margin-top: 10px;
+}
+
+.octo-message-text code {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--teal) 8%, var(--background));
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 0.92em;
+}
+
+.octo-code-block {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+}
+
+.octo-code-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.octo-code-block-heading button {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.octo-code-block pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  color: var(--foreground);
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.octo-code-block code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+}
+
+.octo-copy-status,
+.octo-message-model {
+  display: block;
+  margin-top: 8px;
+  color: var(--foreground-muted);
+  font-size: 10px;
+}
+
+.octo-thinking-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground-muted);
+  font-size: 11px;
 }
 
 .octo-patch-proposal {
@@ -2063,6 +2172,63 @@ a {
 .octo-compare-arrow {
   padding-bottom: 8px;
   color: var(--foreground-muted);
+}
+
+.octo-recommendation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.octo-recommendation-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--background) 72%, transparent);
+}
+
+.octo-recommendation-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.octo-recommendation-title h3 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.octo-recommendation-title span,
+.octo-recommendation-stack span {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--foreground-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.octo-recommendation-card p {
+  margin: 9px 0 0;
+  color: var(--foreground-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.octo-recommendation-card strong {
+  color: var(--foreground);
+}
+
+.octo-recommendation-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .octo-intel-card {
@@ -2446,6 +2612,13 @@ a {
 
   .octo-page-header {
     padding: 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .octo-header-tools {
+    max-width: 100%;
+    justify-content: flex-start;
   }
 
   .octo-page-title {
@@ -2457,7 +2630,8 @@ a {
   }
 
   .octo-welcome-icon {
-    font-size: 48px;
+    width: 64px;
+    height: 64px;
   }
 
   .octo-welcome-title {

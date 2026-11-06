@@ -5,6 +5,24 @@
 
 import type { OctoPageContext } from '@octopus/shared';
 
+export type OctoProviderName = 'gemini' | 'openai' | 'openrouter';
+export type OctoModelSelection = { provider: OctoProviderName; model: string };
+export type OctoModelCatalog = {
+  active: OctoModelSelection | null;
+  providers: Array<{
+    id: OctoProviderName;
+    name: string;
+    configured: boolean;
+    models: Array<{
+      id: string;
+      name: string;
+      description: string;
+      capabilities: string[];
+      configured: boolean;
+    }>;
+  }>;
+};
+
 export type OctoSummary = {
   greeting: string;
   projectCount: number;
@@ -118,6 +136,7 @@ export type OctoResponse = {
   summary: OctoSummary;
   intelligence?: OctoIntelligencePayload;
   patchProposal?: OctoPatchProposal;
+  modelSelection?: OctoModelSelection;
 };
 
 export type OctoAskRequest = {
@@ -146,7 +165,7 @@ export type OctoConversationMessage = {
   id: string;
   role: 'USER' | 'ASSISTANT';
   content: string;
-  metadata?: Record<string, unknown> | null;
+  metadata?: (Record<string, unknown> & { modelSelection?: OctoModelSelection }) | null;
   createdAt: string;
 };
 
@@ -187,7 +206,7 @@ export type OctoProjectGraph = {
   nodes: Array<{
     id: string;
     label: string;
-    type: 'file' | 'class' | 'interface' | 'function' | 'endpoint';
+    type: 'file' | 'directory' | 'class' | 'interface' | 'type' | 'function' | 'component' | 'endpoint';
     filePath: string;
     line?: number;
     metrics: { inDegree: number; outDegree: number; centralityScore: number; isGodNode: boolean };
@@ -196,11 +215,50 @@ export type OctoProjectGraph = {
   godNodes: Array<{ id: string; label: string; filePath: string; metrics: { centralityScore: number } }>;
   clusters: Array<{ name: string; description: string; nodeIds: string[] }>;
   metrics: { totalNodes: number; totalEdges: number; density: number; averageDegree: number };
+  analysis: {
+    status: 'COMPLETE' | 'PARTIAL';
+    parser: 'typescript-compiler-api';
+    supportedLanguages: string[];
+    parsedFileCount: number;
+    unsupportedFileCount: number;
+    malformedFileCount: number;
+    sourceTruncated: boolean;
+    graphTruncated: boolean;
+  };
   report: {
     summary: string;
     riskAreas: Array<{ file: string; severity: 'high' | 'medium'; description: string }>;
     recommendations: string[];
   };
+};
+
+export type OctoProjectRecommendations = {
+  projectId: string;
+  snapshotId: string;
+  analysisStatus: 'COMPLETE' | 'PARTIAL';
+  stack: {
+    languages: Array<{ name: string; fileCount: number }>;
+    frameworks: string[];
+    packageManagers: string[];
+    buildSystems: string[];
+    databases: string[];
+    deploymentConfiguration: string[];
+    configurationPaths: string[];
+    manifestPaths: string[];
+  };
+  recommendations: Array<{
+    id: string;
+    category: 'WEB_HOSTING' | 'API_HOSTING' | 'DATABASE' | 'TESTING';
+    title: string;
+    whyItFits: string;
+    benefits: string[];
+    limitations: string[];
+    integrationComplexity: 'LOW' | 'MEDIUM' | 'HIGH';
+    alternatives: string[];
+    evidence: string[];
+    compatibilityNotes: string[];
+  }>;
+  pricingAndAvailability: 'NOT_VERIFIED';
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
@@ -300,6 +358,7 @@ export async function sendOctoConversationMessage(
     content: string;
     pageContext: OctoPageContext;
     mode?: OctoAskRequest['mode'];
+    modelSelection?: OctoModelSelection;
     snapshotId?: string;
     compare?: OctoAskRequest['compare'];
     images?: string[];
@@ -410,6 +469,32 @@ export async function getOctoGraph(projectId: string, snapshotId: string): Promi
     return data.success ? data.data : null;
   } catch (error) {
     console.error('Error fetching OCTOBOT Graphify data:', error);
+    return null;
+  }
+}
+
+export async function getOctoModelCatalog(): Promise<OctoModelCatalog | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/octo/models`, { credentials: 'include' });
+    return await readApiData<OctoModelCatalog>(response);
+  } catch (error) {
+    console.error('Error fetching OCTOBOT model configuration:', error);
+    return null;
+  }
+}
+
+export async function getOctoRecommendations(
+  projectId: string,
+  snapshotId: string,
+): Promise<OctoProjectRecommendations | null> {
+  try {
+    const url = new URL(`${API_BASE_URL}/octo/recommendations`);
+    url.searchParams.set('projectId', projectId);
+    url.searchParams.set('snapshotId', snapshotId);
+    const response = await fetch(url.toString(), { credentials: 'include' });
+    return await readApiData<OctoProjectRecommendations>(response);
+  } catch (error) {
+    console.error('Error fetching OCTOBOT platform recommendations:', error);
     return null;
   }
 }

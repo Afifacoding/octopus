@@ -41,6 +41,10 @@ export const sendOctoConversationMessageSchema = z.object({
   content: z.string().trim().min(1).max(2000),
   pageContext: octoPageContextSchema.default('DASHBOARD'),
   mode: z.enum(['learn', 'debug', 'dsa', 'code-review', 'interview', 'project-assistant']).optional(),
+  modelSelection: z.object({
+    provider: z.enum(['gemini', 'openai', 'openrouter']),
+    model: z.string().trim().min(1).max(160),
+  }).optional(),
   snapshotId: resourceIdSchema.optional(),
   compare: z.object({
     baseSnapshotId: resourceIdSchema,

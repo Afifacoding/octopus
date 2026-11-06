@@ -131,6 +131,7 @@ export class OctoConversationsService {
       pageContext: input.pageContext,
       userId,
       ...(input.mode ? { mode: input.mode } : {}),
+      ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
       ...(input.images?.length ? { images: input.images } : {}),
       ...(conversation.projectId ? { projectId: conversation.projectId } : {}),
       ...(input.snapshotId ? { snapshotId: input.snapshotId } : {}),
@@ -144,7 +145,12 @@ export class OctoConversationsService {
       userId,
       conversationId,
       content: assistantContent,
-      ...(response.intelligence ? { metadata: { intelligence: response.intelligence } } : {}),
+      ...((response.intelligence || response.modelSelection)
+        ? { metadata: {
+            ...(response.intelligence ? { intelligence: response.intelligence } : {}),
+            ...(response.modelSelection ? { modelSelection: response.modelSelection } : {}),
+          } }
+        : {}),
     });
     if (!assistantMessage) throw new HttpError(404, 'OCTO_CONVERSATION_NOT_FOUND', 'Conversation not found');
 

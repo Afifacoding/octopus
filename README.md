@@ -22,14 +22,14 @@ OCTOPUS combines a VS Code extension, a web application, and an API. The extensi
 
 ## 6. Problem vs. Solution Mapping
 
-| Developer problem | OCTOPUS solution | Implementation status |
-|---|---|---|
-| Project files are difficult to preserve consistently | VS Code workspace scan, ZIP capture, and snapshot upload | Implemented, with configured file/count/size limits |
-| A snapshot is hard to inspect as a single opaque archive | API-generated directory tree, file preview, and sanitized download | Implemented for supported ZIP/text files |
-| Credentials are easy to miss across project files | Snapshot-time detection for supported environment, source, and configuration files | Implemented with heuristic patterns and scan bounds |
-| Detected credentials need controlled storage | Secret Vault encrypts values with AES-256-GCM and scopes access to user/project | Implemented |
-| Credentials should not appear in routine views | Vault listings and code previews return masked values; reveal requires unlock and is audited | Implemented |
-| Large workspaces can exhaust request limits | Streamed extension upload, progress, cancellation, and a 30 MiB archive limit | Implemented; resumable/chunked uploads are future work |
+| Developer problem                                        | OCTOPUS solution                                                                             | Implementation status                                  |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Project files are difficult to preserve consistently     | VS Code workspace scan, ZIP capture, and snapshot upload                                     | Implemented, with configured file/count/size limits    |
+| A snapshot is hard to inspect as a single opaque archive | API-generated directory tree, file preview, and sanitized download                           | Implemented for supported ZIP/text files               |
+| Credentials are easy to miss across project files        | Snapshot-time detection for supported environment, source, and configuration files           | Implemented with heuristic patterns and scan bounds    |
+| Detected credentials need controlled storage             | Secret Vault encrypts values with AES-256-GCM and scopes access to user/project              | Implemented                                            |
+| Credentials should not appear in routine views           | Vault listings and code previews return masked values; reveal requires unlock and is audited | Implemented                                            |
+| Large workspaces can exhaust request limits              | Streamed extension upload, progress, cancellation, and a 30 MiB archive limit                | Implemented; resumable/chunked uploads are future work |
 
 ## 7. Key Features
 
@@ -136,13 +136,19 @@ The normal `package:vsix` script stages the extension and its production depende
 
 ## 15. Deployment Architecture
 
-The currently documented production services are:
+`render.yaml` defines the Render API and static web services:
 
 - Web: `https://octopus-web-r33z.onrender.com`
 - API: `https://octopus-api-bnh6.onrender.com/api/v1`
 - API health endpoint: `GET /api/v1/health`
 
-The API uses PostgreSQL and filesystem snapshot storage. For durable archives, the API service must use a persistent disk and `SNAPSHOT_STORAGE_LOCAL_ROOT` must point under its mount path. Configure `CORS_ORIGIN` to the exact web origin, production HTTPS, SMTP replacement/Brevo API settings, and all required secrets in the hosting dashboard.
+The API health endpoint checks PostgreSQL connectivity and returns `503` when the database is unavailable. The API service attaches a persistent disk at `/var/data`; snapshot storage is configured at `/var/data/snapshots`. The web static site rewrites `/*` to `/index.html` for client-side routes.
+
+Before creating or updating Render services, configure the Blueprint's `DATABASE_URL`, `DIRECT_URL`, `AUTH_SESSION_SECRET`, `AUTH_OTP_SECRET`, `BREVO_API_KEY`, `EMAIL_FROM`, and `VAULT_ENCRYPTION_KEY` values in Render. Production startup rejects missing or development auth secrets, local database URLs, and snapshot paths outside `/var/data`. Generate distinct strong auth secrets and a stable 32-byte Vault key; back up the Vault key with the persistent snapshot disk. Do not put credentials in `VITE_` variables.
+
+Snapshot archive/request/extraction limits are 30 MiB, 50 MiB, and 150,000,000 bytes respectively. The persistent disk's capacity and backup policy must be selected and monitored for expected usage. Configure a larger disk before storage fills.
+
+Database migrations are not run by the Render build or service startup. Review and apply checked-in Prisma migrations to the intended database as a separate, backed-up deployment step.
 
 ## 16. Security Considerations
 
@@ -154,7 +160,7 @@ The API uses PostgreSQL and filesystem snapshot storage. For durable archives, t
 
 ## 17. Current Limitations
 
-- **Render deep links:** the production static host currently returns 404 for direct route requests/reloads. Configure a Static Site rewrite in the Render dashboard: action **Rewrite**, source `/*`, destination `/index.html`. There is no Render manifest in this repository.
+- **Render Blueprint:** confirm the service names, domains, region, plans, persistent-disk size, database URLs, secrets, and web/API origins match the intended deployment before applying `render.yaml`.
 - **Upload ceiling:** the current extension/API archive cap is 30 MiB, API JSON request cap is 50 MiB, and extension upload is one streamed request, not resumable/chunked.
 - **Memory:** the extension streams archive encoding, but Fastify parses the complete JSON request and the API decodes the ZIP into memory. The API also processes archive/tree/detections before responding. Maximum throughput under the actual Render plan has not been measured.
 - **Secret detection:** rules and inspectable file types are heuristic and scan at most 2 MiB per file and the configured uncompressed total scan bound. Unknown formats, oversized individual files, binary secrets, or credentials split across files may be missed.

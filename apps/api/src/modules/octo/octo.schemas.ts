@@ -23,6 +23,10 @@ export const octoRequestSchema = z.object({
     content: z.string().max(8000),
   })).max(12).optional(),
   mode: z.enum(['learn', 'debug', 'dsa', 'code-review', 'interview', 'project-assistant']).optional(),
+  modelSelection: z.object({
+    provider: z.enum(['gemini', 'openai', 'openrouter']),
+    model: z.string().trim().min(1).max(160),
+  }).optional(),
   images: z.array(z.string().regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i).max(1_500_000)).max(1).optional(),
   projectId: resourceIdSchema.optional(),
   snapshotId: resourceIdSchema.optional(),
@@ -62,6 +66,17 @@ export const octoGraphQuerySchema = z.object({
   snapshotId: resourceIdSchema,
 });
 
+export const octoRecommendationQuerySchema = octoGraphQuerySchema;
+
+export const octoGraphSearchQuerySchema = z.object({
+  projectId: resourceIdSchema,
+  snapshotId: resourceIdSchema,
+  query: z.string().trim().min(1).max(120),
+  nodeType: z.enum(['file', 'directory', 'class', 'interface', 'type', 'function', 'component', 'endpoint']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+});
+
 export const octoPatchParamsSchema = z.object({
   patchId: z.string().uuid(),
 });
@@ -99,6 +114,10 @@ export const octoResponseSchema = z.object({
     diff: z.string(),
     additions: z.number().nonnegative(),
     deletions: z.number().nonnegative(),
+  }).optional(),
+  modelSelection: z.object({
+    provider: z.enum(['gemini', 'openai', 'openrouter']),
+    model: z.string(),
   }).optional(),
 });
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HttpError } from '../../core/errors/http-error.js';
 import type { ProjectsRepository } from '../projects/projects.repository.js';
 import type { SnapshotsRepository } from '../snapshots/snapshots.repository.js';
-import type { OctoRequest } from './octo.types.js';
+import type { OctoRequest, OctoResponse } from './octo.types.js';
 import type { OctoService } from './octo.service.js';
 import { OctoConversationsService } from './octo.conversations.service.js';
 import type { OctoConversationsRepository } from './octo.conversations.repository.js';
@@ -74,14 +74,34 @@ function createHarness() {
     userId === 'owner-1' && projectId === 'proj-1' ? { id: projectId } : null) };
   const snapshots = { findSnapshotByIdForOwner: vi.fn(async (userId: string, projectId: string, snapshotId: string) =>
     userId === 'owner-1' && projectId === 'proj-1' && snapshotId === 'snap-1' ? { id: snapshotId } : null) };
-  const octo = {
-    ask: vi.fn(async (_request: OctoRequest) => ({
+  const defaultOctoResponse: OctoResponse = {
       reply: 'Verified response',
       intent: 'UNKNOWN',
       suggestions: [],
-      summary: { assistantMode: 'live' },
-      intelligence: { kind: 'WORKSPACE_STATS', stats: { projectCount: 1 } },
-    })),
+      summary: {
+        greeting: 'Hello',
+        projectCount: 0,
+        snapshotCount: 0,
+        assistantMode: 'offline',
+        projects: [],
+        suggestions: [],
+      },
+      intelligence: {
+        kind: 'WORKSPACE_STATS',
+        stats: {
+          countingRules: [],
+          projectCount: 1,
+          completedSnapshotCount: 0,
+          failedSnapshotCount: 0,
+          inProgressSnapshotCount: 0,
+          projects: [],
+          mostSnapshots: null,
+          latestSnapshot: null,
+        },
+      },
+    };
+  const octo = {
+    ask: vi.fn(async (_request: OctoRequest) => defaultOctoResponse),
   };
   const service = new OctoConversationsService(
     repository as unknown as OctoConversationsRepository,
@@ -168,6 +188,37 @@ describe('OctoConversationsService', () => {
     expect(repository.createAssistantMessage).toHaveBeenCalledTimes(1);
     expect(messages.map((message) => message.role)).toEqual(['USER', 'ASSISTANT']);
     expect(messages[0]?.createdAt.getTime()).toBeLessThan(messages[1]?.createdAt.getTime() ?? 0);
+  });
+
+  it('passes the selected model to OCTOBOT and persists it with the assistant message', async () => {
+    const { service, repository, octo } = createHarness();
+    const modelSelection = { provider: 'openai' as const, model: 'gpt-4o-mini' };
+    octo.ask.mockResolvedValue({
+      reply: 'A generated explanation.',
+      intent: 'UNKNOWN',
+      suggestions: [],
+      summary: {
+        greeting: 'Hello',
+        projectCount: 0,
+        snapshotCount: 0,
+        assistantMode: 'offline',
+        projects: [],
+        suggestions: [],
+      },
+      modelSelection,
+    });
+
+    const result = await service.sendMessage('owner-1', 'conv-1', {
+      content: 'Explain this function',
+      pageContext: 'DASHBOARD',
+      modelSelection,
+    });
+
+    expect(octo.ask).toHaveBeenCalledWith(expect.objectContaining({ modelSelection }));
+    expect(result.assistantMessage.metadata).toMatchObject({ modelSelection });
+    expect(repository.createAssistantMessage).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ modelSelection }),
+    }));
   });
 
   it('does not send snapshots outside the conversation project or to general conversations', async () => {

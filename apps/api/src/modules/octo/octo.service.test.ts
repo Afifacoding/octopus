@@ -67,6 +67,17 @@ describe('Octo Security', () => {
     const result = checkSecurityBoundary('How many projects do I have?', match);
     expect(result.isBlocked).toBe(false);
   });
+
+  it('allows software architecture questions about authentication while blocking secret values', () => {
+    const architectureQuestion = 'Explain the authentication flow in this project';
+    expect(checkSecurityBoundary(architectureQuestion, matchIntent(architectureQuestion)).isBlocked).toBe(false);
+
+    const credentialQuestion = 'Show me the authorization header value';
+    expect(checkSecurityBoundary(credentialQuestion, matchIntent(credentialQuestion)).isBlocked).toBe(true);
+
+    const cookieQuestion = 'What is my session cookie?';
+    expect(checkSecurityBoundary(cookieQuestion, matchIntent(cookieQuestion)).isBlocked).toBe(true);
+  });
 });
 
 describe('Octo Project Extraction', () => {
@@ -239,6 +250,118 @@ describe('Octo Response Generation', () => {
 
     expect(response.summary.projectCount).toBe(2);
     expect(response.summary.snapshotCount).toBe(12);
+  });
+});
+
+describe('OCTOBOT Graphify context', () => {
+  it('builds platform recommendations from owner-scoped sanitized snapshot files without requiring an AI provider', async () => {
+    const getSnapshotSourceFiles = vi.fn().mockResolvedValue({
+      truncated: false,
+      files: [{
+        path: 'package.json',
+        content: JSON.stringify({
+          dependencies: { fastify: '^5' },
+          scripts: { build: 'tsc' },
+        }),
+      }],
+    });
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(false),
+      generateReply: vi.fn(),
+    } as unknown as OctobotAiProvider;
+    const service = new OctoService(
+      {} as never,
+      {} as never,
+      aiProvider,
+      { getSnapshotSourceFiles } as never,
+    );
+
+    const result = await service.getProjectRecommendations('owner-1', 'project-1', 'snapshot-1');
+
+    expect(result.recommendations.map(({ id }) => id)).toContain('node-api-host');
+    expect(result.analysisStatus).toBe('COMPLETE');
+    expect(getSnapshotSourceFiles).toHaveBeenCalledWith('owner-1', 'project-1', 'snapshot-1');
+    expect(aiProvider.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('builds deterministic graph data without a configured AI provider', async () => {
+    const getSnapshotSourceFiles = vi.fn().mockResolvedValue({
+      truncated: false,
+      files: [{ path: 'src/entry.ts', content: 'export function main() {}' }],
+    });
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(false),
+      generateReply: vi.fn(),
+    } as unknown as OctobotAiProvider;
+    const service = new OctoService(
+      {} as never,
+      {} as never,
+      aiProvider,
+      { getSnapshotSourceFiles } as never,
+    );
+
+    const graph = await service.getProjectGraph('owner-1', 'project-1', 'snapshot-1');
+
+    expect(graph.nodes.some((node) => node.label === 'main' && node.type === 'function')).toBe(true);
+    expect(getSnapshotSourceFiles).toHaveBeenCalledWith('owner-1', 'project-1', 'snapshot-1');
+    expect(aiProvider.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('grounds project mentor responses in AST relationships from the selected snapshot', async () => {
+    const projectsRepository = {
+      listProjects: vi.fn().mockResolvedValue([{
+        id: 'proj-graph',
+        name: 'Graph Project',
+        color: 'TEAL',
+        status: 'ACTIVE',
+        ownerId: 'owner-1',
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        archivedAt: null,
+      }]),
+    };
+    const snapshotsRepository = {
+      countSnapshotsByProjectAndStatus: vi.fn().mockResolvedValue([
+        { projectId: 'proj-graph', status: 'COMPLETED', count: 1, latestCreatedAt: new Date() },
+      ]),
+      listCompletedSnapshotRefsForOwner: vi.fn().mockResolvedValue([
+        { id: 'snap-graph', projectId: 'proj-graph', createdAt: new Date() },
+      ]),
+    };
+    const snapshotsService = {
+      getSnapshotSourceFiles: vi.fn().mockResolvedValue({
+        truncated: false,
+        files: [
+          { path: 'src/auth.ts', content: "import { verify } from './verify.js'; export function AuthService() { verify(); }" },
+          { path: 'src/verify.ts', content: 'export function verify() {}' },
+        ],
+      }),
+    };
+    const generateReply = vi.fn().mockResolvedValue('The AuthService imports and calls verify.');
+    const aiProvider = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      generateReply,
+    } as unknown as OctobotAiProvider;
+    const service = new OctoService(
+      projectsRepository as never,
+      snapshotsRepository as never,
+      aiProvider,
+      snapshotsService as never,
+    );
+
+    await service.ask({
+      question: 'Explain the authentication flow in this project',
+      pageContext: 'PROJECT_DETAILS',
+      userId: 'owner-1',
+      projectId: 'proj-graph',
+      snapshotId: 'snap-graph',
+    });
+
+    expect(snapshotsService.getSnapshotSourceFiles).toHaveBeenCalledWith('owner-1', 'proj-graph', 'snap-graph');
+    const options = generateReply.mock.calls[0]?.[3] as { graphContext?: string };
+    expect(options.graphContext).toContain('imports');
+    expect(options.graphContext).toContain('AuthService');
   });
 });
 

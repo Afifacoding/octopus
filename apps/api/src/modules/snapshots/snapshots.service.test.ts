@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import yauzl from 'yauzl';
 import yazl from 'yazl';
@@ -543,7 +544,7 @@ class FakeStorage implements SnapshotStorage {
       storageKey,
       sizeBytes: input.buffer.byteLength,
       integrityAlgorithm: 'sha256' as const,
-      integrityHash: 'abc123hash',
+      integrityHash: createHash('sha256').update(input.buffer).digest('hex'),
     };
   }
 
@@ -615,7 +616,7 @@ describe('SnapshotsService', () => {
 
     expect(snapshot.status).toBe('COMPLETED');
     expect(snapshot.projectId).toBe('project_1');
-    expect(snapshot.integrityHash).toBe('abc123hash');
+    expect(snapshot.integrityHash).toBe(createHash('sha256').update(archiveBuffer).digest('hex'));
     expect(snapshot.archiveStorageKey).toContain('project_1');
     expect(snapshot.fileCount).toBe(2);
     expect(snapshot.directoryCount).toBe(3);
@@ -686,6 +687,25 @@ describe('SnapshotsService', () => {
     expect(source.files.map((file) => file.path)).toContain('project/package.json');
     await expect(service.getSnapshotSourceFiles('user_2', 'project_1', snapshot.id)).rejects.toMatchObject({
       code: 'SNAPSHOT_NOT_FOUND',
+    });
+  });
+
+  it('rejects assistant indexing when a stored snapshot fails its SHA-256 integrity check', async () => {
+    const snapshot = await service.createSnapshot('user_1', 'project_1', {
+      captureSource: 'EXTENSION',
+      archive: {
+        fileName: 'project.zip',
+        contentType: 'application/zip',
+        base64Data: archiveBase64,
+        sizeBytes: archiveBuffer.byteLength,
+      },
+    });
+    const storageKey = snapshot.archiveStorageKey;
+    expect(storageKey).toBeTruthy();
+    storage.archives.set(storageKey!, Buffer.from('not the original archive'));
+
+    await expect(service.getSnapshotSourceFiles('user_1', 'project_1', snapshot.id)).rejects.toMatchObject({
+      code: 'SNAPSHOT_INTEGRITY_MISMATCH',
     });
   });
 

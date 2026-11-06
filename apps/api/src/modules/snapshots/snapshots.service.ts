@@ -719,7 +719,30 @@ export class SnapshotsService {
       );
     }
 
+    if (snapshot.archiveSizeBytes !== null && snapshot.archiveSizeBytes > env.SNAPSHOT_MAX_ARCHIVE_SIZE_BYTES) {
+      throw new HttpError(413, 'SNAPSHOT_ARCHIVE_TOO_LARGE', 'Snapshot archive exceeds the assistant indexing limit');
+    }
+
     const archiveBuffer = await this.storage.readArchive(snapshot.archiveStorageKey);
+    if (archiveBuffer.byteLength > env.SNAPSHOT_MAX_ARCHIVE_SIZE_BYTES) {
+      throw new HttpError(413, 'SNAPSHOT_ARCHIVE_TOO_LARGE', 'Snapshot archive exceeds the assistant indexing limit');
+    }
+
+    if (snapshot.integrityAlgorithm === 'sha256' && snapshot.integrityHash) {
+      const actualHash = createHash('sha256').update(archiveBuffer).digest('hex');
+      if (actualHash !== snapshot.integrityHash) {
+        throw new HttpError(422, 'SNAPSHOT_INTEGRITY_MISMATCH', 'Snapshot archive failed its integrity check');
+      }
+    }
+
+    await buildSnapshotManifest({
+      archiveBuffer,
+      maxEntries: env.SNAPSHOT_MAX_FILE_COUNT + env.SNAPSHOT_MAX_DIRECTORY_COUNT,
+      maxFiles: env.SNAPSHOT_MAX_FILE_COUNT,
+      maxPathLength: env.SNAPSHOT_MAX_PATH_LENGTH,
+      maxTotalBytes: env.SNAPSHOT_MAX_TOTAL_BYTES,
+    });
+
     return extractSanitizedSnapshotSourceFiles({
       archiveBuffer,
       maxPathLength: env.SNAPSHOT_MAX_PATH_LENGTH,

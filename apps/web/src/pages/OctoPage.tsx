@@ -5,6 +5,8 @@ import {
   deleteOctoConversation,
   getOctoConversation,
   getOctoGraph,
+  getOctoModelCatalog,
+  getOctoRecommendations,
   getOctoSummary,
   listOctoConversations,
   renameOctoConversation,
@@ -15,8 +17,11 @@ import type {
   OctoConversation,
   OctoConversationMessage,
   OctoIntelligencePayload,
+  OctoModelCatalog,
+  OctoModelSelection,
   OctoPatchProposal,
   OctoProjectGraph,
+  OctoProjectRecommendations,
   OctoSummary,
 } from '../lib/octo/octo-client';
 import { buildCompareSnapshotOptions, defaultComparePair } from '../lib/octo/octo-intelligence';
@@ -33,6 +38,7 @@ type Message = {
   imageAttachment?: boolean;
   patchProposal?: OctoPatchProposal;
   intelligence?: OctoIntelligencePayload;
+  modelSelection?: OctoModelSelection;
 };
 
 function isOctoIntelligencePayload(value: unknown): value is OctoIntelligencePayload {
@@ -50,7 +56,65 @@ function toUiMessage(message: OctoConversationMessage): Message {
     timestamp: new Date(message.createdAt),
     ...(metadata?.hasImage === true ? { imageAttachment: true } : {}),
     ...(isOctoIntelligencePayload(intelligence) ? { intelligence } : {}),
+    ...(metadata?.modelSelection ? { modelSelection: metadata.modelSelection } : {}),
   };
+}
+
+function formatInlineText(text: string) {
+  return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).flatMap((part, index) => {
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return [<code key={index}>{part.slice(1, -1)}</code>];
+    }
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return [<strong key={index}>{part.slice(2, -2)}</strong>];
+    }
+    return part.split('\n').flatMap((line, lineIndex) => [
+      ...(lineIndex > 0 ? [<br key={`${index}-${lineIndex}`} />] : []),
+      line,
+    ]);
+  });
+}
+
+function FormattedMessage({ content }: { content: string }) {
+  const [copiedBlock, setCopiedBlock] = useState<number | null>(null);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const parts = content.split(/```([^\n]*)\n([\s\S]*?)```/g);
+
+  const copyCode = async (code: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedBlock(index);
+      setCopyFailed(false);
+    } catch {
+      setCopyFailed(true);
+    }
+  };
+
+  return (
+    <div className="octo-message-text">
+      {parts.map((part, index) => {
+        if (index % 3 === 1) return null;
+        if (index % 3 === 2) {
+          const language = parts[index - 1]?.trim();
+          const code = part.replace(/\r?\n$/, '');
+          return (
+            <div className="octo-code-block" key={index}>
+              <div className="octo-code-block-heading">
+                <span>{language || 'Code'}</span>
+                <button type="button" onClick={() => void copyCode(code, index)}>
+                  {copiedBlock === index ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <pre><code>{code}</code></pre>
+            </div>
+          );
+        }
+        if (!part.trim()) return null;
+        return <p key={index}>{formatInlineText(part.trim())}</p>;
+      })}
+      {copyFailed && <span className="octo-copy-status" role="status">Could not copy code to clipboard.</span>}
+    </div>
+  );
 }
 
 type OctobotMode = 'learn' | 'debug' | 'dsa' | 'code-review' | 'interview' | 'project-assistant';
@@ -88,6 +152,10 @@ export function OctoPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OctoSummary | null>(null);
+  const [modelCatalog, setModelCatalog] = useState<OctoModelCatalog | null>(null);
+  const [selectedModel, setSelectedModel] = useState<OctoModelSelection | null>(null);
+  const [modelCatalogUnavailable, setModelCatalogUnavailable] = useState(false);
+  const [modelCatalogLoading, setModelCatalogLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedSnapshotId, setSelectedSnapshotId] = useState('');
   const [mode, setMode] = useState<OctobotMode>('learn');
@@ -95,7 +163,13 @@ export function OctoPage() {
   const [graph, setGraph] = useState<OctoProjectGraph | null>(null);
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [recommendations, setRecommendations] = useState<OctoProjectRecommendations | null>(null);
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
   const [graphSearch, setGraphSearch] = useState('');
+  const [graphTypeFilter, setGraphTypeFilter] = useState('all');
+  const [graphNodeLimit, setGraphNodeLimit] = useState(100);
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const [pathStart, setPathStart] = useState('');
   const [pathEnd, setPathEnd] = useState('');
@@ -105,9 +179,12 @@ export function OctoPage() {
   const [compareTargetId, setCompareTargetId] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recommendationsRequestRef = useRef(0);
 
   const pageContext: OctoPageContext = 'DASHBOARD';
   const selectedProject = summary?.projects.find((project) => project.id === selectedProjectId);
+  const selectedModelProvider = modelCatalog?.providers.find((provider) => provider.id === selectedModel?.provider);
+  const selectedModelInfo = selectedModelProvider?.models.find((model) => model.id === selectedModel?.model);
   const selectedNode = graph?.nodes.find((node) => node.id === selectedNodeId);
   const compareOptions = buildCompareSnapshotOptions(selectedProject?.snapshots || []);
   const canCompare = compareOptions.length >= 2;
@@ -143,6 +220,20 @@ export function OctoPage() {
     };
 
     void loadSummary();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getOctoModelCatalog().then((catalog) => {
+      if (cancelled) return;
+      setModelCatalog(catalog);
+      setSelectedModel(catalog?.active || null);
+      setModelCatalogUnavailable(!catalog);
+      setModelCatalogLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -219,6 +310,7 @@ export function OctoPage() {
           content: prompt,
           pageContext,
           mode,
+          ...(selectedModel ? { modelSelection: selectedModel } : {}),
           ...(image ? { images: [image] } : {}),
           ...(selectedSnapshotId ? { snapshotId: selectedSnapshotId } : {}),
           ...(compare ? { compare } : {}),
@@ -255,7 +347,7 @@ export function OctoPage() {
         setLoading(false);
       }
     },
-    [activeConversationId, mode, pageContext, selectedProjectId, selectedSnapshotId],
+    [activeConversationId, mode, pageContext, selectedModel, selectedProjectId, selectedSnapshotId],
   );
 
   const handleNewChat = () => {
@@ -378,10 +470,14 @@ export function OctoPage() {
   };
 
   const handleProjectChange = (projectId: string) => {
+    recommendationsRequestRef.current += 1;
     const project = summary?.projects.find((item) => item.id === projectId);
     setSelectedProjectId(projectId);
     setSelectedSnapshotId(project?.snapshots[0]?.id || '');
     setGraph(null);
+    setRecommendations(null);
+    setRecommendationsError(null);
+    setRecommendationsLoading(false);
     const pair = defaultComparePair(buildCompareSnapshotOptions(project?.snapshots || []));
     setCompareBaseId(pair?.baseSnapshotId || '');
     setCompareTargetId(pair?.targetSnapshotId || '');
@@ -439,9 +535,23 @@ export function OctoPage() {
     setError(null);
     const result = await getOctoGraph(selectedProjectId, selectedSnapshotId);
     setGraph(result);
+    setGraphNodeLimit(100);
     setSelectedNodeId(result?.godNodes[0]?.id || result?.nodes[0]?.id || '');
     setGraphLoading(false);
     if (!result) setError('Graphify could not load this snapshot.');
+  };
+
+  const loadRecommendations = async () => {
+    if (!selectedProjectId || !selectedSnapshotId) return;
+    const requestId = ++recommendationsRequestRef.current;
+    setRecommendationsOpen(true);
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+    const result = await getOctoRecommendations(selectedProjectId, selectedSnapshotId);
+    if (requestId !== recommendationsRequestRef.current) return;
+    setRecommendations(result);
+    setRecommendationsLoading(false);
+    if (!result) setRecommendationsError('Recommendations could not be loaded for this snapshot.');
   };
 
   const tracePath = () => {
@@ -469,17 +579,24 @@ export function OctoPage() {
   };
 
   const filteredNodes = graph?.nodes.filter((node) =>
+    (graphTypeFilter === 'all' || node.type === graphTypeFilter) &&
     `${node.label} ${node.filePath} ${node.type}`.toLowerCase().includes(graphSearch.toLowerCase()),
-  ).slice(0, 100) || [];
+  ) || [];
+  const visibleGraphNodes = filteredNodes.slice(0, graphNodeLimit);
 
   return (
     <div className="octo-page">
       <div className="octo-page-header">
         <div className="octo-page-header-content">
-          <div className="octo-page-icon">🐙</div>
+          <img
+            className="octo-page-icon"
+            src="/branding/octopus-ghost-mark.png"
+            alt=""
+            aria-hidden="true"
+          />
           <div>
             <h1 className="octo-page-title">OCTOBOT</h1>
-            <p className="octo-page-subtitle">Your OCTOPUS assistant, powered by OCTOBOT</p>
+            <p className="octo-page-subtitle">Your project-aware AI pair programmer</p>
           </div>
         </div>
         <div className="octo-header-tools">
@@ -497,6 +614,37 @@ export function OctoPage() {
               ))}
             </select>
           </label>
+          <label className="octo-select-label">
+            AI model
+            <select
+              aria-label="AI model"
+              value={selectedModel ? `${selectedModel.provider}:${selectedModel.model}` : ''}
+              onChange={(event) => {
+                const [providerId, ...modelParts] = event.target.value.split(':');
+                const modelId = modelParts.join(':');
+                const provider = modelCatalog?.providers.find((item) => item.id === providerId);
+                const model = provider?.models.find((item) => item.id === modelId && item.configured);
+                setSelectedModel(provider && model ? { provider: provider.id, model: model.id } : null);
+              }}
+              disabled={modelCatalogLoading || loading || conversationLoading}
+              title={modelCatalogUnavailable ? 'Model configuration could not be loaded; the server default remains available.' : undefined}
+            >
+              {!selectedModel && <option value="">{modelCatalogLoading ? 'Loading models…' : 'Use server default'}</option>}
+              {(modelCatalog?.providers || []).map((provider) => (
+                <optgroup key={provider.id} label={`${provider.name}${provider.configured ? '' : ' · Not configured'}`}>
+                  {provider.models.map((model) => (
+                    <option
+                      key={`${provider.id}:${model.id}`}
+                      value={`${provider.id}:${model.id}`}
+                      disabled={!model.configured}
+                    >
+                      {model.name}{model.configured ? '' : ' · Not configured'}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
           {activeConversationId && (
             <span id="octo-conversation-project-context" className="octo-conversation-context-lock">
               Context is fixed for this chat
@@ -506,7 +654,13 @@ export function OctoPage() {
             Snapshot
             <select
               value={selectedSnapshotId}
-              onChange={(event) => setSelectedSnapshotId(event.target.value)}
+              onChange={(event) => {
+                recommendationsRequestRef.current += 1;
+                setSelectedSnapshotId(event.target.value);
+                setRecommendations(null);
+                setRecommendationsError(null);
+                setRecommendationsLoading(false);
+              }}
               disabled={!selectedProject?.snapshots.length}
             >
               <option value="">No completed snapshot</option>
@@ -528,6 +682,14 @@ export function OctoPage() {
           <button
             type="button"
             className="octo-toolbar-button"
+            onClick={() => void loadRecommendations()}
+            disabled={!selectedProjectId || !selectedSnapshotId || recommendationsLoading}
+          >
+            {recommendationsLoading ? 'Analyzing stack...' : 'Platform recommendations'}
+          </button>
+          <button
+            type="button"
+            className="octo-toolbar-button"
             onClick={openCompare}
             disabled={!canCompare || loading}
             title={canCompare ? 'Compare two completed snapshots' : 'Select a project with at least two completed snapshots'}
@@ -537,7 +699,13 @@ export function OctoPage() {
           <div className="octo-page-status">
             <div className={`octo-status-indicator ${summary?.assistantMode === 'offline' ? 'is-offline' : ''}`}></div>
             <span className="octo-status-text">
-              {summary?.assistantMode === 'live' ? 'OCTOBOT online' : 'AI provider required'}
+              {modelCatalogUnavailable
+                ? 'Model configuration unavailable'
+                : selectedModel
+                  ? `${selectedModelProvider?.name || selectedModel.provider} · ${selectedModelInfo?.name || selectedModel.model}`
+                  : summary?.assistantMode === 'live'
+                    ? 'Using server-configured AI'
+                    : 'AI provider required'}
             </span>
           </div>
         </div>
@@ -548,7 +716,7 @@ export function OctoPage() {
           <div className="octo-graph-heading">
             <div>
               <h2>Graphify</h2>
-              <p>{selectedProject?.name || 'Selected project'} · snapshot-derived architecture</p>
+              <p>{selectedProject?.name || 'Selected project'} · static AST relationships; runtime registration is not verified</p>
             </div>
             <button type="button" className="octo-toolbar-button" onClick={() => setGraphOpen(false)}>Close</button>
           </div>
@@ -560,17 +728,42 @@ export function OctoPage() {
                 <span>{graph.metrics.totalEdges} relationships</span>
                 <span>{graph.godNodes.length} high-coupling nodes</span>
               </div>
+              <p className="octo-graph-summary">
+                {graph.analysis.status === 'COMPLETE' ? 'Complete' : 'Partial'} TypeScript/JavaScript analysis.
+                Parsed {graph.analysis.parsedFileCount} files
+                {graph.analysis.supportedLanguages.length > 0 ? ` (${graph.analysis.supportedLanguages.join(', ')})` : ''};
+                {` ${graph.analysis.unsupportedFileCount} unsupported and ${graph.analysis.malformedFileCount} malformed files.`}
+                {graph.analysis.sourceTruncated || graph.analysis.graphTruncated ? ' Results were bounded by analysis limits.' : ''}
+              </p>
               <p className="octo-graph-summary">{graph.report.summary}</p>
               <div className="octo-graph-grid">
                 <div className="octo-graph-list">
                   <input
                     value={graphSearch}
-                    onChange={(event) => setGraphSearch(event.target.value)}
+                    onChange={(event) => {
+                      setGraphSearch(event.target.value);
+                      setGraphNodeLimit(100);
+                    }}
                     placeholder="Search files, symbols, endpoints"
                     aria-label="Search graph nodes"
                   />
+                  <label className="octo-select-label">
+                    Node type
+                    <select
+                      value={graphTypeFilter}
+                      onChange={(event) => {
+                        setGraphTypeFilter(event.target.value);
+                        setGraphNodeLimit(100);
+                      }}
+                    >
+                      <option value="all">All types</option>
+                      {['file', 'directory', 'function', 'component', 'class', 'interface', 'type', 'endpoint'].map((type) => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </label>
                   <div className="octo-graph-nodes">
-                    {filteredNodes.map((node) => (
+                    {visibleGraphNodes.map((node) => (
                       <button
                         key={node.id}
                         type="button"
@@ -580,6 +773,12 @@ export function OctoPage() {
                         <strong>{node.label}</strong><span>{node.filePath}</span>
                       </button>
                     ))}
+                    {filteredNodes.length > visibleGraphNodes.length && (
+                      <button type="button" onClick={() => setGraphNodeLimit((limit) => limit + 100)}>
+                        Show more ({filteredNodes.length - visibleGraphNodes.length} remaining)
+                      </button>
+                    )}
+                    {filteredNodes.length === 0 && <p className="octo-graph-empty">No matching graph entities.</p>}
                   </div>
                 </div>
                 <div className="octo-graph-detail">
@@ -588,6 +787,24 @@ export function OctoPage() {
                       <h3>{selectedNode.label}</h3>
                       <p>{selectedNode.filePath} · {selectedNode.type}</p>
                       <p>Inbound {selectedNode.metrics.inDegree} · Outbound {selectedNode.metrics.outDegree} · Centrality {selectedNode.metrics.centralityScore}</p>
+                      <h3>Direct relationships</h3>
+                      <ul>
+                        {graph.edges
+                          .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
+                          .slice(0, 24)
+                          .map((edge) => {
+                            const relatedId = edge.source === selectedNode.id ? edge.target : edge.source;
+                            const relatedNode = graph.nodes.find((node) => node.id === relatedId);
+                            if (!relatedNode) return null;
+                            return (
+                              <li key={`${edge.source}:${edge.type}:${edge.target}`}>
+                                <button type="button" onClick={() => setSelectedNodeId(relatedNode.id)}>
+                                  {edge.source === selectedNode.id ? `${edge.type} →` : `← ${edge.type}`} {relatedNode.label} ({relatedNode.filePath})
+                                </button>
+                              </li>
+                            );
+                          })}
+                      </ul>
                       <h3>Architecture layers</h3>
                       <ul>{graph.clusters.map((cluster) => (
                         <li key={cluster.name}>{cluster.name}: {cluster.nodeIds.length} entities</li>
@@ -596,11 +813,11 @@ export function OctoPage() {
                       <div className="octo-path-controls">
                         <select aria-label="Path start" value={pathStart} onChange={(event) => setPathStart(event.target.value)}>
                           <option value="">From entity</option>
-                          {graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+                          {graph.nodes.slice(0, 1000).map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
                         </select>
                         <select aria-label="Path end" value={pathEnd} onChange={(event) => setPathEnd(event.target.value)}>
                           <option value="">To entity</option>
-                          {graph.nodes.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+                          {graph.nodes.slice(0, 1000).map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
                         </select>
                         <button type="button" onClick={tracePath} disabled={!pathStart || !pathEnd}>Trace</button>
                       </div>
@@ -609,6 +826,59 @@ export function OctoPage() {
                     </>
                   )}
                 </div>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {recommendationsOpen && (
+        <section className="octo-graph-panel octo-recommendations-panel" aria-label="Platform recommendations">
+          <div className="octo-graph-heading">
+            <div>
+              <h2>Platform recommendations</h2>
+              <p>
+                Evidence from {selectedProject?.name}’s selected snapshot. Pricing, availability and platform compatibility are not verified.
+              </p>
+            </div>
+            <button type="button" className="octo-toolbar-button" onClick={() => setRecommendationsOpen(false)}>Close</button>
+          </div>
+          {recommendationsLoading && <p className="octo-graph-empty" role="status">Analyzing verified project files…</p>}
+          {recommendationsError && <p className="octo-message-error" role="alert">{recommendationsError}</p>}
+          {recommendations && (
+            <>
+              <p className="octo-graph-summary">
+                Analysis {recommendations.analysisStatus.toLowerCase()} · Pricing and availability not verified
+              </p>
+              <div className="octo-recommendation-stack">
+                {[...recommendations.stack.languages.map(({ name, fileCount }) => `${name} (${fileCount})`),
+                  ...recommendations.stack.frameworks,
+                  ...recommendations.stack.packageManagers,
+                  ...recommendations.stack.databases].map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+                {recommendations.stack.languages.length === 0 &&
+                  recommendations.stack.frameworks.length === 0 &&
+                  recommendations.stack.databases.length === 0 && <span>No stack evidence was detected.</span>}
+              </div>
+              <div className="octo-recommendation-list">
+                {recommendations.recommendations.map((recommendation) => (
+                  <article className="octo-recommendation-card" key={recommendation.id}>
+                    <div className="octo-recommendation-title">
+                      <h3>{recommendation.title}</h3>
+                      <span>{recommendation.integrationComplexity.toLowerCase()} complexity</span>
+                    </div>
+                    <p>{recommendation.whyItFits}</p>
+                    <p><strong>Evidence:</strong> {recommendation.evidence.join(', ') || 'No manifest evidence available.'}</p>
+                    <p><strong>Benefits:</strong> {recommendation.benefits.join(' · ')}</p>
+                    <p><strong>Limitations:</strong> {recommendation.limitations.join(' · ')}</p>
+                    <p><strong>Alternatives:</strong> {recommendation.alternatives.join(' · ')}</p>
+                    {recommendation.compatibilityNotes.map((note) => <p key={note}>{note}</p>)}
+                  </article>
+                ))}
+                {recommendations.recommendations.length === 0 && (
+                  <p className="octo-graph-empty">There is not enough verified project evidence to recommend a platform.</p>
+                )}
               </div>
             </>
           )}
@@ -671,7 +941,7 @@ export function OctoPage() {
 
       {messages.length === 0 && !conversationLoading && (
         <div className="octo-page-welcome">
-          <div className="octo-welcome-icon">🐙</div>
+          <img className="octo-welcome-icon" src="/branding/octopus-ghost-mark.png" alt="" aria-hidden="true" />
           <h2 className="octo-welcome-title">Hi, I'm OCTOBOT</h2>
           <p className="octo-welcome-message">
             I can help with software development and your OCTOPUS projects, snapshots, and Blueprints.
@@ -697,6 +967,7 @@ export function OctoPage() {
                 <button
                   key={suggestion}
                   className="octo-quick-action-button"
+                  disabled={loading || conversationLoading}
                   onClick={() => handleQuickAction(suggestion)}
                 >
                   {suggestion}
@@ -723,13 +994,20 @@ export function OctoPage() {
             {messages.map((message, index) => (
               <div key={index} className={`octo-message-container octo-message-${message.role}`}>
                 <div className="octo-message-content">
-                  {message.role === 'octo' && <div className="octo-message-avatar">🐙</div>}
+                  {message.role === 'octo' && (
+                    <img className="octo-message-avatar" src="/branding/octopus-ghost-mark.png" alt="OCTOBOT" />
+                  )}
                   <div className="octo-message-bubble">
                     {message.image && <img className="octo-message-image" src={message.image} alt="User attachment" />}
                     {message.imageAttachment && (
                       <span className="octo-message-attachment-note">Image attachment (not retained in chat history)</span>
                     )}
-                    <p className="octo-message-text">{message.content}</p>
+                    <FormattedMessage content={message.content} />
+                    {message.modelSelection && (
+                      <span className="octo-message-model">
+                        {message.modelSelection.provider} · {message.modelSelection.model}
+                      </span>
+                    )}
                     {message.intelligence && <OctoIntelligenceCard payload={message.intelligence} />}
                     {message.patchProposal && (
                       <div className="octo-patch-proposal">
@@ -759,8 +1037,9 @@ export function OctoPage() {
             {loading && (
               <div className="octo-message-container octo-message-loading">
                 <div className="octo-message-content">
-                  <div className="octo-message-avatar">🐙</div>
+                  <img className="octo-message-avatar" src="/branding/octopus-ghost-mark.png" alt="" />
                   <div className="octo-message-bubble">
+                    <span className="octo-thinking-label" role="status">OCTOBOT is thinking</span>
                     <div className="octo-loading-dots">
                       <span></span>
                       <span></span>
@@ -782,6 +1061,7 @@ export function OctoPage() {
                   <button
                     key={suggestion}
                     className="octo-suggestion-button"
+                    disabled={loading || conversationLoading}
                     onClick={() => handleAsk(suggestion)}
                   >
                     {suggestion}

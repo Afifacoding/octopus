@@ -83,20 +83,11 @@ const SENSITIVE_KEYWORDS = [
   'vault_value',
   'vault.secret',
   'vault_secret',
-  'crypto',
-  'cryptography',
-  'cipher',
-  'hash',
-  // Web/API specific
-  'cookie',
-  'cookies',
-  'session',
-  'auth',
-  'authorization',
-  'oauth',
-  'openid',
-  'saml',
-  'fingerprint',
+];
+
+const SENSITIVE_REQUEST_PATTERNS = [
+  /\b(?:show|reveal|print|dump|retrieve|expose|what(?:'s| is))\b.{0,32}\b(?:authorization|auth|session|cookie)(?:\s+(?:cookie|header|value|contents?|credentials?)){1,2}\b/i,
+  /\b(?:show|reveal|print|dump|retrieve|expose|what(?:'s| is))\b.{0,32}\b(?:my|current)\s+(?:authorization|auth|session|cookie)(?:\s+(?:cookie|header|value|contents?|credentials?))?\s*[?.!]*$/i,
 ];
 
 /**
@@ -104,7 +95,8 @@ const SENSITIVE_KEYWORDS = [
  */
 export function isBlockedSensitiveRequest(question: string): boolean {
   const normalized = question.toLowerCase().replace(/[^a-z0-9.\s]/g, '');
-  return SENSITIVE_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  return SENSITIVE_KEYWORDS.some((keyword) => normalized.includes(keyword)) ||
+    SENSITIVE_REQUEST_PATTERNS.some((pattern) => pattern.test(question));
 }
 
 /**

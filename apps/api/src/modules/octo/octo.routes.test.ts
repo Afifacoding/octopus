@@ -44,6 +44,19 @@ describe('registerOctoRoutes', () => {
     expect(secretsService).toBeInstanceOf(SecretsService);
   });
 
+  it('authenticates and rate-limits the direct OCTOBOT ask endpoint', async () => {
+    const post = vi.fn();
+    const app = { get: vi.fn(), post, patch: vi.fn(), delete: vi.fn() } as unknown as FastifyInstance;
+
+    await registerOctoRoutes(app);
+
+    const route = post.mock.calls.find((call) => call[0] === '/octo/ask');
+    expect(route?.[1]).toMatchObject({
+      preHandler: expect.any(Function),
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    });
+  });
+
   it('registers authenticated intelligence routes and rate-limits snapshot comparison', async () => {
     const get = vi.fn();
     const app = { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() } as unknown as FastifyInstance;
@@ -51,17 +64,37 @@ describe('registerOctoRoutes', () => {
     await registerOctoRoutes(app);
 
     const routes = new Map(get.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>]));
+    expect(routes.get('/octo/models')?.preHandler).toBeTypeOf('function');
     for (const path of [
       '/octo/intelligence/projects',
       '/octo/intelligence/projects/:projectId/snapshots',
       '/octo/intelligence/projects/:projectId/snapshots/:snapshotId',
       '/octo/intelligence/projects/:projectId/compare',
+      '/octo/recommendations',
     ]) {
       expect(routes.get(path)?.preHandler).toBeTypeOf('function');
     }
     expect(routes.get('/octo/intelligence/projects/:projectId/compare')?.config).toEqual({
       rateLimit: { max: 20, timeWindow: '1 minute' },
     });
+    expect(routes.get('/octo/recommendations')?.config).toEqual({
+      rateLimit: { max: 10, timeWindow: '1 minute' },
+    });
+  });
+
+  it('registers authenticated, rate-limited Graphify routes', async () => {
+    const get = vi.fn();
+    const app = { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() } as unknown as FastifyInstance;
+
+    await registerOctoRoutes(app);
+
+    const routes = new Map(get.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>]));
+    const graphRoute = routes.get('/octo/graph');
+    const searchRoute = routes.get('/octo/graphify/search');
+    expect(graphRoute?.preHandler).toBeTypeOf('function');
+    expect(searchRoute?.preHandler).toBeTypeOf('function');
+    expect(graphRoute?.config).toEqual({ rateLimit: { max: 10, timeWindow: '1 minute' } });
+    expect(searchRoute?.config).toEqual({ rateLimit: { max: 20, timeWindow: '1 minute' } });
   });
 
   it('registers authenticated conversation CRUD and rate-limits message sending', async () => {

@@ -9,8 +9,10 @@ import { OctoService } from './octo.service.js';
 import {
   octoCompareQuerySchema,
   octoGraphQuerySchema,
+  octoGraphSearchQuerySchema,
   octoPatchParamsSchema,
   octoProjectParamsSchema,
+  octoRecommendationQuerySchema,
   octoRequestSchema,
   octoSnapshotParamsSchema,
 } from './octo.schemas.js';
@@ -68,6 +70,7 @@ export function createOctoController(octoService: OctoService) {
           pageContext: payload.pageContext,
           ...(payload.history ? { history: payload.history } : {}),
           ...(payload.mode ? { mode: payload.mode } : {}),
+          ...(payload.modelSelection ? { modelSelection: payload.modelSelection } : {}),
           ...(payload.images ? { images: payload.images } : {}),
           projectId: payload.projectId,
           snapshotId: payload.snapshotId,
@@ -99,6 +102,43 @@ export function createOctoController(octoService: OctoService) {
       const query = octoGraphQuerySchema.parse(request.query);
       const graph = await octoService.getProjectGraph(userId, query.projectId, query.snapshotId);
       return reply.code(200).send({ success: true, data: graph });
+    },
+
+    async models(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      return reply.code(200).send({ success: true, data: octoService.getModelCatalog() });
+    },
+
+    async recommendations(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      const query = octoRecommendationQuerySchema.parse(request.query);
+      const recommendations = await octoService.getProjectRecommendations(
+        userId,
+        query.projectId,
+        query.snapshotId,
+      );
+      return reply.code(200).send({ success: true, data: recommendations });
+    },
+
+    async graphSearch(request: FastifyRequest, reply: FastifyReply) {
+      const userId = request.auth?.userId;
+      if (!userId) throw new HttpError(401, 'AUTH_REQUIRED', 'Authentication required');
+
+      const query = octoGraphSearchQuerySchema.parse(request.query);
+      const result = await octoService.searchProjectGraph(
+        userId,
+        query.projectId,
+        query.snapshotId,
+        query.query,
+        query.nodeType,
+        query.page,
+        query.pageSize,
+      );
+      return reply.code(200).send({ success: true, data: result });
     },
 
     async intelligenceProjects(request: FastifyRequest, reply: FastifyReply) {
