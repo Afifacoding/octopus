@@ -29,7 +29,7 @@ type MutableNode = {
   children: Map<string, MutableNode>;
 };
 
-function normalizeArchivePath(inputPath: string) {
+export function normalizeArchivePath(inputPath: string) {
   if (inputPath.includes('\u0000')) {
     throw new HttpError(400, 'SNAPSHOT_INVALID_ENTRY_PATH', 'Snapshot archive entry contains invalid characters');
   }

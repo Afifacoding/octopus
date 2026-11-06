@@ -23,6 +23,7 @@ type OctobotReplyOptions = {
   images?: string[];
   patchSource?: { path: string; content: string };
   patchRequested?: boolean;
+  verifiedFacts?: string;
 };
 
 type ProviderName = 'gemini' | 'openai' | 'openrouter';
@@ -109,6 +110,7 @@ export class OctobotAiProvider {
     const workspaceFacts = {
       projectCount: context.projectCount,
       snapshotCount: context.snapshotCount,
+      snapshotCountRule: 'completed snapshots in active projects',
       currentProjectName: context.currentProjectName,
       projects: context.projects.map(({ name, color, snapshotCount }) => ({ name, color, snapshotCount })),
     };
@@ -133,6 +135,10 @@ export class OctobotAiProvider {
     }
 
     if (options.graphContext) prompt += `\n\n${sanitizeTextForOcto(options.graphContext)}`;
+    if (options.verifiedFacts) {
+      prompt += `\n\nVERIFIED OCTOPUS BACKEND RESULTS (JSON, computed deterministically by the OCTOPUS API; this is the only source of truth for this answer):\n${sanitizeTextForOcto(options.verifiedFacts)}\n\nExplain these verified results in clear natural language. Use only the numbers, project names, snapshot references and file paths that appear above. Do not estimate, round, add, or invent any count, file, snapshot, or change. If something the user asked about is not present in the results, say that it is not available.`;
+    }
+
     if (options.images?.length) {
       prompt += '\n\nThe user attached an image. Inspect it only to answer their request; do not transcribe or expose any visible credentials.';
     }

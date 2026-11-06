@@ -11,7 +11,13 @@ import { OctoContextBuilder } from './octo.context.js';
 import { matchIntent } from './octo.intents.js';
 import { checkSecurityBoundary, isBlockedSensitiveRequest } from './octo.security.js';
 import { OctobotAiProvider } from './octo.ai-provider.js';
-import type { OctoRequest, OctoResponse, OctoSummary } from './octo.types.js';
+import type { OctoRequest, OctoResponse, OctoSummary, OctoWorkspaceStats, WorkspaceContext } from './octo.types.js';
+import {
+  buildWorkspaceStats,
+  detectIntelligenceQuery,
+  OctoIntelligenceService,
+  type IntelligenceQuery,
+} from './octo.intelligence.js';
 import { OctoProjectIntelligence } from './octo.project-intelligence.js';
 import type { SnapshotsService } from '../snapshots/snapshots.service.js';
 import { HttpError } from '../../core/errors/http-error.js';
@@ -28,6 +34,7 @@ type PendingPatch = {
 
 export class OctoService {
   private contextBuilder: OctoContextBuilder;
+  private readonly intelligence: OctoIntelligenceService;
   private readonly intelligenceCache = new Map<string, OctoProjectIntelligence>();
   private readonly pendingPatches = new Map<string, PendingPatch>();
 
@@ -38,9 +45,10 @@ export class OctoService {
     private readonly snapshotsService?: Pick<
       SnapshotsService,
       'getSnapshotSourceFiles' | 'getSnapshotFileContent' | 'createPatchedSnapshot'
-    >,
+    > & Partial<Pick<SnapshotsService, 'listSnapshots' | 'compareSnapshots'>>,
   ) {
     this.contextBuilder = new OctoContextBuilder(projectsRepository, snapshotsRepository);
+    this.intelligence = new OctoIntelligenceService(snapshotsRepository, snapshotsService);
   }
 
   async ask(request: OctoRequest): Promise<OctoResponse> {
@@ -55,6 +63,34 @@ export class OctoService {
 
     // 3. Build workspace context
     const context = await this.contextBuilder.buildContext(request.userId, request.projectId);
+
+    // 4. Deterministic project & snapshot intelligence
+    const intelligenceQuery: IntelligenceQuery | null = request.compare
+      ? {
+          kind: 'COMPARE',
+          base: { type: 'id', value: request.compare.baseSnapshotId },
+          target: { type: 'id', value: request.compare.targetSnapshotId },
+        }
+      : request.images?.length
+        ? null
+        : detectIntelligenceQuery(request.question);
+    if (intelligenceQuery) {
+      const answer = await this.intelligence.answer(intelligenceQuery, {
+        userId: request.userId,
+        question: request.question,
+        context,
+        projectId: request.projectId,
+      });
+      return {
+        // Keep fact-bearing intelligence deterministic; a free-form AI rewrite
+        // cannot be reliably checked for altered names, IDs, dates, or statuses.
+        reply: answer.reply,
+        intent: intentMatch.intent,
+        suggestions: this.generateSuggestions(intentMatch.intent, context),
+        summary: this.buildSummary(context),
+        ...(answer.payload ? { intelligence: answer.payload } : {}),
+      };
+    }
 
     let sourceSnippets: ReturnType<OctoProjectIntelligence['retrieveContext']> = [];
     let graphContext = '';
@@ -133,6 +169,23 @@ export class OctoService {
   async getSummary(userId: string, projectId?: string): Promise<OctoSummary> {
     const context = await this.contextBuilder.buildContext(userId, projectId);
     return this.buildSummary(context);
+  }
+
+  async getWorkspaceIntelligence(userId: string): Promise<OctoWorkspaceStats> {
+    const context = await this.contextBuilder.buildContext(userId);
+    return buildWorkspaceStats(context);
+  }
+
+  async listProjectSnapshots(userId: string, projectId: string) {
+    return this.intelligence.listProjectSnapshots(userId, projectId);
+  }
+
+  async getSnapshotDetails(userId: string, projectId: string, snapshotId: string) {
+    return this.intelligence.getSnapshotDetails(userId, projectId, snapshotId);
+  }
+
+  async compareSnapshots(userId: string, projectId: string, baseSnapshotId: string, targetSnapshotId: string) {
+    return this.intelligence.compareSnapshots(userId, projectId, baseSnapshotId, targetSnapshotId);
   }
 
   async getProjectGraph(userId: string, projectId: string, snapshotId: string) {
@@ -245,18 +298,7 @@ export class OctoService {
     return intelligence;
   }
 
-  private buildSummary(context: {
-    projectCount: number;
-    snapshotCount: number;
-    projects: Array<{
-      id: string;
-      name: string;
-      color: string;
-      snapshotCount: number;
-      snapshots?: Array<{ id: string; createdAt: string }>;
-    }>;
-    currentProjectName?: string;
-  }): OctoSummary {
+  private buildSummary(context: WorkspaceContext): OctoSummary {
     const greeting = this.generateGreeting(context.currentProjectName);
 
     const suggestions = this.generateDefaultSuggestions(context);
@@ -271,6 +313,9 @@ export class OctoService {
         name: project.name,
         color: project.color,
         snapshotCount: project.snapshotCount,
+        failedSnapshotCount: project.failedSnapshotCount ?? 0,
+        inProgressSnapshotCount: project.inProgressSnapshotCount ?? 0,
+        latestSnapshotAt: project.latestSnapshotAt ?? null,
         snapshots: project.snapshots || [],
       })),
       suggestions,

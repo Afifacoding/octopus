@@ -26,6 +26,35 @@ export const octoRequestSchema = z.object({
   images: z.array(z.string().regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i).max(1_500_000)).max(1).optional(),
   projectId: resourceIdSchema.optional(),
   snapshotId: resourceIdSchema.optional(),
+  compare: z.object({
+    baseSnapshotId: resourceIdSchema,
+    targetSnapshotId: resourceIdSchema,
+  }).optional(),
+}).superRefine((value, context) => {
+  if (!value.compare) return;
+  if (!value.projectId) {
+    context.addIssue({ code: 'custom', path: ['projectId'], message: 'Select a project to compare snapshots' });
+  }
+  if (value.compare.baseSnapshotId === value.compare.targetSnapshotId) {
+    context.addIssue({ code: 'custom', path: ['compare'], message: 'Choose two different snapshots to compare' });
+  }
+});
+
+export const octoProjectParamsSchema = z.object({
+  projectId: resourceIdSchema,
+});
+
+export const octoSnapshotParamsSchema = z.object({
+  projectId: resourceIdSchema,
+  snapshotId: resourceIdSchema,
+});
+
+export const octoCompareQuerySchema = z.object({
+  baseSnapshotId: resourceIdSchema,
+  targetSnapshotId: resourceIdSchema,
+}).refine((value) => value.baseSnapshotId !== value.targetSnapshotId, {
+  message: 'Choose two different snapshots to compare',
+  path: ['targetSnapshotId'],
 });
 
 export const octoGraphQuerySchema = z.object({
@@ -53,10 +82,16 @@ export const octoResponseSchema = z.object({
       name: z.string(),
       color: z.string(),
       snapshotCount: z.number().nonnegative(),
+      failedSnapshotCount: z.number().nonnegative(),
+      inProgressSnapshotCount: z.number().nonnegative(),
+      latestSnapshotAt: z.string().nullable(),
       snapshots: z.array(z.object({ id: z.string(), createdAt: z.string() })),
     })),
     suggestions: z.array(z.string()),
   }),
+  intelligence: z.object({ kind: z.enum(['WORKSPACE_STATS', 'PROJECT_SNAPSHOTS', 'SNAPSHOT_COMPARISON']) })
+    .passthrough()
+    .optional(),
   patchProposal: z.object({
     patchId: z.string().uuid(),
     filePath: z.string(),

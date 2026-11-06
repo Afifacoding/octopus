@@ -127,6 +127,55 @@ export class SnapshotsRepository {
     });
   }
 
+  /**
+   * Snapshot counts per project and status in one grouped query, always scoped
+   * through project ownership so foreign project IDs contribute nothing.
+   */
+  async countSnapshotsByProjectAndStatus(ownerId: string, projectIds: string[]) {
+    if (projectIds.length === 0) {
+      return [];
+    }
+
+    const groups = await prisma.snapshot.groupBy({
+      by: ['projectId', 'status'],
+      where: {
+        projectId: { in: projectIds },
+        project: { ownerId },
+      },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+
+    return groups.map((group) => ({
+      projectId: group.projectId,
+      status: group.status,
+      count: group._count._all,
+      latestCreatedAt: group._max.createdAt,
+    }));
+  }
+
+  async listCompletedSnapshotRefsForOwner(ownerId: string, projectIds: string[]) {
+    if (projectIds.length === 0) {
+      return [];
+    }
+
+    return prisma.snapshot.findMany({
+      where: {
+        projectId: { in: projectIds },
+        status: 'COMPLETED',
+        project: { ownerId },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
   async updateSnapshot(projectId: string, snapshotId: string, input: SnapshotUpdateRecordInput) {
     const data = {
       ...(input.status !== undefined ? { status: input.status } : {}),

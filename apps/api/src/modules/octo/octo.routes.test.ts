@@ -43,4 +43,24 @@ describe('registerOctoRoutes', () => {
     expect(storage).toBe(constructed.storage);
     expect(secretsService).toBeInstanceOf(SecretsService);
   });
+
+  it('registers authenticated intelligence routes and rate-limits snapshot comparison', async () => {
+    const get = vi.fn();
+    const app = { get, post: vi.fn() } as unknown as FastifyInstance;
+
+    await registerOctoRoutes(app);
+
+    const routes = new Map(get.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>]));
+    for (const path of [
+      '/octo/intelligence/projects',
+      '/octo/intelligence/projects/:projectId/snapshots',
+      '/octo/intelligence/projects/:projectId/snapshots/:snapshotId',
+      '/octo/intelligence/projects/:projectId/compare',
+    ]) {
+      expect(routes.get(path)?.preHandler).toBeTypeOf('function');
+    }
+    expect(routes.get('/octo/intelligence/projects/:projectId/compare')?.config).toEqual({
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+    });
+  });
 });

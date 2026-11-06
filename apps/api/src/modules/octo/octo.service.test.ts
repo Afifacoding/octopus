@@ -144,11 +144,15 @@ describe('Octo Response Generation', () => {
     } as never;
 
     const mockSnapshotsRepository = {
-      listSnapshotsByProject: vi.fn((projectId: string) => {
-        if (projectId === 'proj-1') return Promise.resolve(Array(4).fill({}));
-        if (projectId === 'proj-2') return Promise.resolve(Array(8).fill({}));
-        return Promise.resolve([]);
-      }),
+      countSnapshotsByProjectAndStatus: vi.fn(() =>
+        Promise.resolve([
+          { projectId: 'proj-1', status: 'COMPLETED', count: 4, latestCreatedAt: new Date() },
+          { projectId: 'proj-2', status: 'COMPLETED', count: 8, latestCreatedAt: new Date() },
+          { projectId: 'proj-2', status: 'FAILED', count: 1, latestCreatedAt: new Date() },
+        ]),
+      ),
+      listCompletedSnapshotRefsForOwner: vi.fn(() => Promise.resolve([])),
+      listSnapshotsByProject: vi.fn(),
       findSnapshotByIdForProject: vi.fn(),
       findSnapshotByIdForOwner: vi.fn(),
       createSnapshot: vi.fn(),
@@ -259,7 +263,10 @@ describe('Octo getSummary', () => {
     } as never;
 
     const mockSnapshotsRepository = {
-      listSnapshotsByProject: vi.fn(() => Promise.resolve(Array(3).fill({}))),
+      countSnapshotsByProjectAndStatus: vi.fn(() =>
+        Promise.resolve([{ projectId: 'proj-1', status: 'COMPLETED', count: 3, latestCreatedAt: new Date() }]),
+      ),
+      listCompletedSnapshotRefsForOwner: vi.fn(() => Promise.resolve([])),
     } as never;
 
     const service = new OctoService(mockProjectsRepository, mockSnapshotsRepository);

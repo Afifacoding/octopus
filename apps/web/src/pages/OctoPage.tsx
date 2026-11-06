@@ -6,7 +6,15 @@ import {
   getOctoSummary,
   rejectOctoPatch,
 } from '../lib/octo/octo-client';
-import type { OctoPatchProposal, OctoProjectGraph, OctoSummary } from '../lib/octo/octo-client';
+import type {
+  OctoAskRequest,
+  OctoIntelligencePayload,
+  OctoPatchProposal,
+  OctoProjectGraph,
+  OctoSummary,
+} from '../lib/octo/octo-client';
+import { buildCompareSnapshotOptions, defaultComparePair } from '../lib/octo/octo-intelligence';
+import { OctoIntelligenceCard } from '../components/octo/OctoIntelligenceCard';
 import type { OctoPageContext } from '@octopus/shared';
 
 type Message = {
@@ -15,6 +23,7 @@ type Message = {
   timestamp: Date;
   image?: string;
   patchProposal?: OctoPatchProposal;
+  intelligence?: OctoIntelligencePayload;
 };
 
 type OctobotMode = 'learn' | 'debug' | 'dsa' | 'code-review' | 'interview' | 'project-assistant';
@@ -30,7 +39,9 @@ const MODES: Array<{ value: OctobotMode; label: string }> = [
 
 const QUICK_SUGGESTIONS = [
   'Show my projects',
-  'How many snapshots do I have?',
+  'How many snapshots are in each project?',
+  'Which project has the most snapshots?',
+  'Compare my latest two snapshots',
   'What is Blueprint?',
   'How do I restore a snapshot?',
   'Where can I find my secrets?',
@@ -54,12 +65,17 @@ export function OctoPage() {
   const [pathStart, setPathStart] = useState('');
   const [pathEnd, setPathEnd] = useState('');
   const [tracedPath, setTracedPath] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareBaseId, setCompareBaseId] = useState('');
+  const [compareTargetId, setCompareTargetId] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const pageContext: OctoPageContext = 'DASHBOARD';
   const selectedProject = summary?.projects.find((project) => project.id === selectedProjectId);
   const selectedNode = graph?.nodes.find((node) => node.id === selectedNodeId);
+  const compareOptions = buildCompareSnapshotOptions(selectedProject?.snapshots || []);
+  const canCompare = compareOptions.length >= 2;
 
   // Load initial summary
   useEffect(() => {
@@ -82,7 +98,7 @@ export function OctoPage() {
   }, [messages]);
 
   const handleAsk = useCallback(
-    async (question: string, image: string | null = null) => {
+    async (question: string, image: string | null = null, compare?: OctoAskRequest['compare']) => {
       if (!question.trim() && !image) return;
       const prompt = question.trim() || 'Please inspect this screenshot and explain the issue.';
 
@@ -107,6 +123,7 @@ export function OctoPage() {
           ...(image ? { images: [image] } : {}),
           ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
           ...(selectedSnapshotId ? { snapshotId: selectedSnapshotId } : {}),
+          ...(compare ? { compare } : {}),
           history: messages.slice(-8).map((message) => ({
             role: message.role === 'octo' ? 'assistant' : 'user',
             content: message.content.slice(-8000),
@@ -124,6 +141,7 @@ export function OctoPage() {
           content: response.reply,
           timestamp: new Date(),
           ...(response.patchProposal ? { patchProposal: response.patchProposal } : {}),
+          ...(response.intelligence ? { intelligence: response.intelligence } : {}),
         };
 
         setMessages((prev) => [...prev, octoMessage]);
@@ -206,6 +224,31 @@ export function OctoPage() {
     setSelectedProjectId(projectId);
     setSelectedSnapshotId(project?.snapshots[0]?.id || '');
     setGraph(null);
+    const pair = defaultComparePair(buildCompareSnapshotOptions(project?.snapshots || []));
+    setCompareBaseId(pair?.baseSnapshotId || '');
+    setCompareTargetId(pair?.targetSnapshotId || '');
+    if (!pair) setCompareOpen(false);
+  };
+
+  const openCompare = () => {
+    const pair = defaultComparePair(compareOptions);
+    const hasValidSelection = [compareBaseId, compareTargetId].every((id) => compareOptions.some((option) => option.id === id));
+    if (!hasValidSelection && pair) {
+      setCompareBaseId(pair.baseSnapshotId);
+      setCompareTargetId(pair.targetSnapshotId);
+    }
+    setCompareOpen(true);
+  };
+
+  const runCompare = () => {
+    const base = compareOptions.find((option) => option.id === compareBaseId);
+    const target = compareOptions.find((option) => option.id === compareTargetId);
+    if (!selectedProject || !base || !target || base.id === target.id) return;
+    void handleAsk(
+      `Compare snapshot ${base.number} and snapshot ${target.number} of ${selectedProject.name}`,
+      null,
+      { baseSnapshotId: base.id, targetSnapshotId: target.id },
+    );
   };
 
   const handleImageFile = (file?: File) => {
@@ -314,6 +357,15 @@ export function OctoPage() {
           >
             {graphLoading ? 'Building graph...' : 'Graphify'}
           </button>
+          <button
+            type="button"
+            className="octo-toolbar-button"
+            onClick={openCompare}
+            disabled={!canCompare || loading}
+            title={canCompare ? 'Compare two completed snapshots' : 'Select a project with at least two completed snapshots'}
+          >
+            Compare
+          </button>
           <div className="octo-page-status">
             <div className={`octo-status-indicator ${summary?.assistantMode === 'offline' ? 'is-offline' : ''}`}></div>
             <span className="octo-status-text">
@@ -395,6 +447,44 @@ export function OctoPage() {
         </section>
       )}
 
+      {compareOpen && canCompare && (
+        <section className="octo-graph-panel octo-compare-panel" aria-label="Compare snapshots">
+          <div className="octo-graph-heading">
+            <div>
+              <h2>Compare snapshots</h2>
+              <p>{selectedProject?.name} · file-level changes verified from snapshot archives</p>
+            </div>
+            <button type="button" className="octo-toolbar-button" onClick={() => setCompareOpen(false)}>Close</button>
+          </div>
+          <div className="octo-compare-controls">
+            <label className="octo-select-label">
+              From (base)
+              <select value={compareBaseId} onChange={(event) => setCompareBaseId(event.target.value)}>
+                {compareOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </label>
+            <span className="octo-compare-arrow" aria-hidden="true">→</span>
+            <label className="octo-select-label">
+              To (target)
+              <select value={compareTargetId} onChange={(event) => setCompareTargetId(event.target.value)}>
+                {compareOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="octo-toolbar-button is-primary"
+              onClick={runCompare}
+              disabled={loading || !compareBaseId || !compareTargetId || compareBaseId === compareTargetId}
+            >
+              {loading ? 'Comparing...' : 'Run comparison'}
+            </button>
+          </div>
+          {compareBaseId && compareBaseId === compareTargetId && (
+            <p className="octo-graph-empty">Choose two different snapshots.</p>
+          )}
+        </section>
+      )}
+
       {messages.length === 0 && (
         <div className="octo-page-welcome">
           <div className="octo-welcome-icon">🐙</div>
@@ -443,6 +533,7 @@ export function OctoPage() {
                   <div className="octo-message-bubble">
                     {message.image && <img className="octo-message-image" src={message.image} alt="User attachment" />}
                     <p className="octo-message-text">{message.content}</p>
+                    {message.intelligence && <OctoIntelligenceCard payload={message.intelligence} />}
                     {message.patchProposal && (
                       <div className="octo-patch-proposal">
                         <div className="octo-patch-heading">

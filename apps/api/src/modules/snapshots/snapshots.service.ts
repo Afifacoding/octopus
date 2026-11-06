@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import yauzl from 'yauzl';
@@ -12,6 +13,12 @@ import { isEnvFilePath, shouldFullyMaskValue, shouldMaskForSnapshot } from '../s
 import type { SecretsService } from '../secrets/secrets.service.js';
 import { analyzeBlueprintFromSnapshot } from './snapshots.blueprint.js';
 import { assertBlueprintTransition } from './snapshots.blueprint.lifecycle.js';
+import {
+  buildSnapshotManifest,
+  compareSnapshotManifests,
+  type SnapshotManifest,
+  type SnapshotManifestComparison,
+} from './snapshots.compare.js';
 import { buildDirectoryTreeFromZip } from './snapshots.directory-tree.js';
 import {
   buildSanitizedSnapshotZip,
@@ -83,6 +90,39 @@ type BlueprintDbRecord = {
 type SnapshotWithBlueprintRecord = SnapshotRecord & {
   blueprint: BlueprintDbRecord | null;
 };
+
+export type SnapshotComparisonSnapshotRef = {
+  id: string;
+  status: SnapshotRecord['status'];
+  createdAt: string;
+  fileCount: number | null;
+  directoryCount: number | null;
+  archiveSizeBytes: number | null;
+};
+
+export type SnapshotComparisonResponse = SnapshotManifestComparison & {
+  projectId: string;
+  base: SnapshotComparisonSnapshotRef;
+  target: SnapshotComparisonSnapshotRef;
+};
+
+const MANIFEST_CACHE_LIMIT = 16;
+const manifestCache = new Map<string, SnapshotManifest>();
+
+export function clearSnapshotManifestCache() {
+  manifestCache.clear();
+}
+
+function toComparisonSnapshotRef(snapshot: SnapshotRecord): SnapshotComparisonSnapshotRef {
+  return {
+    id: snapshot.id,
+    status: snapshot.status,
+    createdAt: snapshot.createdAt.toISOString(),
+    fileCount: snapshot.fileCount,
+    directoryCount: snapshot.directoryCount,
+    archiveSizeBytes: snapshot.archiveSizeBytes,
+  };
+}
 
 type ZipFileLookupResult =
   | {
@@ -1002,6 +1042,110 @@ export class SnapshotsService {
     });
 
     return this.toPublicSnapshot(snapshot);
+  }
+
+  async compareSnapshots(
+    ownerId: string,
+    projectId: string,
+    baseSnapshotId: string,
+    targetSnapshotId: string,
+    options: { listLimit?: number } = {},
+  ): Promise<SnapshotComparisonResponse> {
+    if (baseSnapshotId === targetSnapshotId) {
+      throw new HttpError(400, 'SNAPSHOT_COMPARE_SAME', 'Choose two different snapshots to compare');
+    }
+
+    await this.assertProjectOwnership(ownerId, projectId);
+    const [base, target] = await Promise.all([
+      this.findAuthorizedSnapshot(ownerId, projectId, baseSnapshotId),
+      this.findAuthorizedSnapshot(ownerId, projectId, targetSnapshotId),
+    ]);
+
+    // Loaded sequentially so at most one decrypted archive is held in memory at a time.
+    const baseManifest = await this.loadSnapshotManifest(base);
+    const targetManifest = await this.loadSnapshotManifest(target);
+
+    return {
+      projectId,
+      base: toComparisonSnapshotRef(base),
+      target: toComparisonSnapshotRef(target),
+      ...compareSnapshotManifests(baseManifest, targetManifest, options),
+    };
+  }
+
+  private async loadSnapshotManifest(snapshot: SnapshotRecord): Promise<SnapshotManifest> {
+    if (snapshot.status !== 'COMPLETED') {
+      throw new HttpError(409, 'SNAPSHOT_NOT_READY', 'Only completed snapshots can be compared');
+    }
+
+    if (!snapshot.archiveStorageKey) {
+      throw new HttpError(409, 'SNAPSHOT_ARCHIVE_UNAVAILABLE', 'Snapshot archive is unavailable');
+    }
+
+    if (snapshot.archiveContentType !== 'application/zip' && snapshot.archiveContentType !== 'application/x-zip-compressed') {
+      throw new HttpError(
+        400,
+        'SNAPSHOT_ARCHIVE_UNSUPPORTED_FOR_COMPARISON',
+        'Snapshot comparison currently supports ZIP archives only',
+      );
+    }
+
+    if (snapshot.archiveSizeBytes !== null && snapshot.archiveSizeBytes > env.SNAPSHOT_MAX_ARCHIVE_SIZE_BYTES) {
+      throw new HttpError(413, 'SNAPSHOT_ARCHIVE_TOO_LARGE', 'Snapshot archive exceeds the comparison size limit');
+    }
+
+    const cacheKey = snapshot.integrityHash ? `${snapshot.id}:${snapshot.integrityHash}` : null;
+    const cached = cacheKey ? manifestCache.get(cacheKey) : undefined;
+    if (cacheKey && cached) {
+      manifestCache.delete(cacheKey);
+      manifestCache.set(cacheKey, cached);
+      return cached;
+    }
+
+    let archiveBuffer: Buffer;
+    try {
+      archiveBuffer = await this.storage.readArchive(snapshot.archiveStorageKey);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') {
+        throw new HttpError(410, 'SNAPSHOT_ARCHIVE_UNAVAILABLE', 'Snapshot archive is no longer available');
+      }
+
+      if (error instanceof HttpError && error.code === 'SNAPSHOT_ARCHIVE_DECRYPT_FAILED') {
+        throw new HttpError(422, 'SNAPSHOT_ARCHIVE_CORRUPTED', 'Snapshot archive is corrupted or unreadable');
+      }
+
+      throw new HttpError(500, 'SNAPSHOT_ARCHIVE_READ_FAILED', 'Snapshot archive could not be read');
+    }
+
+    if (archiveBuffer.byteLength > env.SNAPSHOT_MAX_ARCHIVE_SIZE_BYTES) {
+      throw new HttpError(413, 'SNAPSHOT_ARCHIVE_TOO_LARGE', 'Snapshot archive exceeds the comparison size limit');
+    }
+
+    if (snapshot.integrityAlgorithm === 'sha256' && snapshot.integrityHash) {
+      const actualHash = createHash('sha256').update(archiveBuffer).digest('hex');
+      if (actualHash !== snapshot.integrityHash) {
+        throw new HttpError(422, 'SNAPSHOT_INTEGRITY_MISMATCH', 'Snapshot archive failed its integrity check');
+      }
+    }
+
+    const manifest = await buildSnapshotManifest({
+      archiveBuffer,
+      maxEntries: env.SNAPSHOT_MAX_FILE_COUNT + env.SNAPSHOT_MAX_DIRECTORY_COUNT,
+      maxFiles: env.SNAPSHOT_MAX_FILE_COUNT,
+      maxPathLength: env.SNAPSHOT_MAX_PATH_LENGTH,
+      maxTotalBytes: env.SNAPSHOT_MAX_TOTAL_BYTES,
+    });
+
+    if (cacheKey) {
+      manifestCache.set(cacheKey, manifest);
+      while (manifestCache.size > MANIFEST_CACHE_LIMIT) {
+        const oldestKey = manifestCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        manifestCache.delete(oldestKey);
+      }
+    }
+
+    return manifest;
   }
 
   private async findAuthorizedSnapshot(ownerId: string, projectId: string, snapshotId: string) {

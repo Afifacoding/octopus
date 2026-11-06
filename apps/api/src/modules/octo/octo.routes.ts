@@ -40,4 +40,23 @@ export async function registerOctoRoutes(app: FastifyInstance) {
   app.get('/octo/graph', { preHandler: requireAuth }, controller.graph);
   app.post('/octo/patches/:patchId/approve', { preHandler: requireAuth }, controller.approvePatch);
   app.post('/octo/patches/:patchId/reject', { preHandler: requireAuth }, controller.rejectPatch);
+
+  // Project & snapshot intelligence (owner-scoped, deterministic)
+  app.get('/octo/intelligence/projects', { preHandler: requireAuth }, controller.intelligenceProjects);
+  app.get(
+    '/octo/intelligence/projects/:projectId/snapshots',
+    { preHandler: requireAuth },
+    controller.intelligenceProjectSnapshots,
+  );
+  app.get(
+    '/octo/intelligence/projects/:projectId/snapshots/:snapshotId',
+    { preHandler: requireAuth },
+    controller.intelligenceSnapshotDetails,
+  );
+  // Comparison decrypts and hashes two archives, so it gets a tighter per-route limit.
+  app.get(
+    '/octo/intelligence/projects/:projectId/compare',
+    { preHandler: requireAuth, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    controller.intelligenceCompare,
+  );
 }

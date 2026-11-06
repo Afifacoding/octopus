@@ -14,17 +14,109 @@ export type OctoSummary = {
     id: string;
     name: string;
     color: string;
+    /** Completed snapshots only. */
     snapshotCount: number;
+    failedSnapshotCount?: number;
+    inProgressSnapshotCount?: number;
+    latestSnapshotAt?: string | null;
+    /** Completed snapshots, newest first. */
     snapshots: Array<{ id: string; createdAt: string }>;
   }>;
   suggestions: string[];
 };
+
+export type OctoSnapshotStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export type OctoSnapshotSummary = {
+  id: string;
+  sequence: number | null;
+  status: OctoSnapshotStatus;
+  captureSource: 'EXTENSION' | 'WEB' | 'API';
+  clientName: string | null;
+  clientVersion: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  fileCount: number | null;
+  directoryCount: number | null;
+  archiveSizeBytes: number | null;
+  failureCode: string | null;
+};
+
+export type OctoWorkspaceStats = {
+  countingRules: string[];
+  projectCount: number;
+  completedSnapshotCount: number;
+  failedSnapshotCount: number;
+  inProgressSnapshotCount: number;
+  projects: Array<{
+    id: string;
+    name: string;
+    color: string;
+    completedSnapshots: number;
+    failedSnapshots: number;
+    inProgressSnapshots: number;
+    latestSnapshotAt: string | null;
+  }>;
+  mostSnapshots: { count: number; projects: Array<{ id: string; name: string }> } | null;
+  latestSnapshot: { projectId: string; projectName: string; snapshotId: string; createdAt: string } | null;
+};
+
+export type OctoComparisonFile = {
+  path: string;
+  status: 'ADDED' | 'MODIFIED' | 'DELETED' | 'UNCHANGED';
+  baseSizeBytes: number | null;
+  targetSizeBytes: number | null;
+  sizeDeltaBytes: number;
+  sensitive: boolean;
+};
+
+export type OctoComparisonSnapshotRef = {
+  id: string;
+  sequence: number | null;
+  status: OctoSnapshotStatus;
+  createdAt: string;
+  fileCount: number | null;
+  directoryCount: number | null;
+  archiveSizeBytes: number | null;
+};
+
+export type OctoSnapshotComparison = {
+  projectId: string;
+  projectName: string;
+  base: OctoComparisonSnapshotRef;
+  target: OctoComparisonSnapshotRef;
+  summary: {
+    baseFileCount: number;
+    targetFileCount: number;
+    added: number;
+    modified: number;
+    deleted: number;
+    unchanged: number;
+    changed: number;
+    baseTotalBytes: number;
+    targetTotalBytes: number;
+    netSizeDeltaBytes: number;
+    sensitiveChanged: number;
+  };
+  added: OctoComparisonFile[];
+  modified: OctoComparisonFile[];
+  deleted: OctoComparisonFile[];
+  unchanged: OctoComparisonFile[];
+  truncated: { added: boolean; modified: boolean; deleted: boolean; unchanged: boolean };
+  directories: Array<{ directory: string; added: number; modified: number; deleted: number; unchanged: number }>;
+};
+
+export type OctoIntelligencePayload =
+  | { kind: 'WORKSPACE_STATS'; stats: OctoWorkspaceStats }
+  | { kind: 'PROJECT_SNAPSHOTS'; project: { id: string; name: string }; snapshots: OctoSnapshotSummary[] }
+  | { kind: 'SNAPSHOT_COMPARISON'; comparison: OctoSnapshotComparison };
 
 export type OctoResponse = {
   reply: string;
   intent: string;
   suggestions: string[];
   summary: OctoSummary;
+  intelligence?: OctoIntelligencePayload;
   patchProposal?: OctoPatchProposal;
 };
 
@@ -36,6 +128,8 @@ export type OctoAskRequest = {
   images?: string[];
   projectId?: string;
   snapshotId?: string;
+  /** Deterministic snapshot comparison; requires projectId. */
+  compare?: { baseSnapshotId: string; targetSnapshotId: string };
 };
 
 export type OctoPatchProposal = {
