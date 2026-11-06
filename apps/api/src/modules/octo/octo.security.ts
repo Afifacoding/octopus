@@ -127,6 +127,10 @@ export function isBlockedIntent(intent: string): boolean {
 export function sanitizeTextForOcto(text: string): string {
   // Mask assignment patterns
   const patterns = [
+    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/gi,
+    /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi,
+    /\b(?:aws_secret_access_key|client_secret|private_key|database_url|db_url|connection_string)\s*[:=]\s*[^\s,;]+/gi,
+    /(Authorization\s*[:=]\s*Basic\s+)[A-Za-z0-9+/=]+/gi,
     /(sk-(?:proj-)?[a-zA-Z0-9_-]{20,})/g,
     /(AIza[0-9A-Za-z_-]{35})/g,
     /(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g,
@@ -142,8 +146,8 @@ export function sanitizeTextForOcto(text: string): string {
 
   let sanitized = text;
   for (const pattern of patterns) {
-    sanitized = sanitized.replace(pattern, (_match, prefix?: string) =>
-      prefix?.toLowerCase() === 'bearer ' ? `${prefix}[REDACTED]` : '[REDACTED]',
+    sanitized = sanitized.replace(pattern, (_match, prefix?: string | number) =>
+      typeof prefix === 'string' && prefix.toLowerCase() === 'bearer ' ? `${prefix}[REDACTED]` : '[REDACTED]',
     );
   }
 

@@ -1400,6 +1400,186 @@ a {
   overflow: hidden;
 }
 
+.octo-conversation-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.octo-conversation-sidebar {
+  display: flex;
+  flex: 0 0 260px;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 92%, var(--teal) 8%);
+}
+
+.octo-conversation-sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.octo-conversation-sidebar-heading h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.octo-conversation-sidebar-heading span {
+  color: var(--foreground-muted);
+  font-size: 10px;
+}
+
+.octo-new-chat-button {
+  padding: 7px 9px;
+  border: 1px solid color-mix(in oklab, var(--teal) 40%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--teal) 12%, var(--card));
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.octo-new-chat-button:disabled,
+.octo-conversation-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.octo-conversation-list {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+}
+
+.octo-conversation-item {
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.octo-conversation-item.is-active {
+  border-color: color-mix(in oklab, var(--teal) 45%, var(--border));
+  background: color-mix(in oklab, var(--teal) 10%, var(--card));
+}
+
+.octo-conversation-open {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.octo-conversation-open:disabled {
+  cursor: not-allowed;
+}
+
+.octo-conversation-title {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-conversation-kind {
+  color: var(--foreground-muted);
+  font-size: 10px;
+}
+
+.octo-conversation-actions {
+  display: flex;
+  gap: 4px;
+  padding: 2px 5px 0;
+}
+
+.octo-conversation-actions button {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--foreground-muted);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.octo-conversation-actions button:hover {
+  border-color: var(--teal);
+  color: var(--foreground);
+}
+
+.octo-conversation-sidebar-state,
+.octo-conversation-sidebar-error {
+  margin: 12px;
+  color: var(--foreground-muted);
+  font-size: 11px;
+}
+
+.octo-conversation-sidebar-error {
+  color: #ef4444;
+}
+
+.octo-conversation-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.octo-conversation-loading,
+.octo-load-earlier-button {
+  align-self: center;
+  margin: 12px;
+  color: var(--foreground-muted);
+  font-size: 12px;
+}
+
+.octo-load-earlier-button {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  cursor: pointer;
+}
+
+.octo-load-earlier-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.octo-message-attachment-note {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--foreground-muted);
+  font-size: 10px;
+}
+
+.octo-conversation-context-lock {
+  color: var(--foreground-muted);
+  font-size: 10px;
+}
+
 .octo-page-header {
   flex: 0 0 auto;
   padding: 24px;
@@ -2306,6 +2486,21 @@ a {
   .octo-graph-panel {
     max-height: 42vh;
     padding: 12px 16px;
+  }
+
+  .octo-conversation-workspace {
+    flex-direction: column;
+  }
+
+  .octo-conversation-sidebar {
+    flex: 0 0 auto;
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .octo-conversation-list {
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
   }
 
   .octo-graph-grid {

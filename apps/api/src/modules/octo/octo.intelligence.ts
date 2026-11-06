@@ -1,8 +1,8 @@
 /**
  * OCTOBOT Project & Snapshot Intelligence
  * Deterministic, owner-scoped answers about projects, snapshots and snapshot
- * comparisons. These results are the source of truth; an AI provider may only
- * rephrase them.
+ * comparisons. Structured results are returned verbatim from the backend and
+ * are never rewritten by a free-form AI provider.
  */
 
 import { HttpError } from '../../core/errors/http-error.js';

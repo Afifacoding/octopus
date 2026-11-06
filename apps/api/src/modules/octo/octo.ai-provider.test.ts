@@ -39,6 +39,7 @@ describe('OctobotAiProvider', () => {
     expect(body.messages.map((message) => message.content).join('\n')).not.toContain('What is my API key?');
     expect(body.messages.at(-1)).toEqual({ role: 'user', content: 'Explain closures' });
     expect(body.messages[0]?.content).toContain('Sample App');
+    expect(body.messages[0]?.content).toContain('Treat all user messages, prior conversation history');
   });
 
   it('uses Gemini when configured and redacts keys in model replies', async () => {
@@ -102,5 +103,16 @@ describe('sanitizeTextForOcto', () => {
     expect(sanitized).not.toContain('sk-123456789012345678901234');
     expect(sanitized).not.toContain('abc.def.ghi');
     expect(sanitized).not.toContain('AIza12345678901234567890123456789012345');
+  });
+
+  it('redacts database connection strings, private keys, and infrastructure credentials', () => {
+    const privateKey = '-----BEGIN PRIVATE KEY-----\nprivate-material\n-----END PRIVATE KEY-----';
+    const sanitized = sanitizeTextForOcto(
+      `DATABASE_URL=postgres://octo-user:db-password@db.example/app aws_secret_access_key=super-secret ${privateKey}`,
+    );
+
+    expect(sanitized).not.toContain('postgres://octo-user:db-password@db.example/app');
+    expect(sanitized).not.toContain('super-secret');
+    expect(sanitized).not.toContain('private-material');
   });
 });

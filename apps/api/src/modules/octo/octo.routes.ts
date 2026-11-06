@@ -16,6 +16,9 @@ import { createSnapshotStorage } from '../snapshots/snapshots.storage.js';
 import { SnapshotsService } from '../snapshots/snapshots.service.js';
 import { SecretsRepository } from '../secrets/secrets.repository.js';
 import { SecretsService } from '../secrets/secrets.service.js';
+import { createOctoConversationsController } from './octo.conversations.controller.js';
+import { OctoConversationsRepository } from './octo.conversations.repository.js';
+import { OctoConversationsService } from './octo.conversations.service.js';
 
 export async function registerOctoRoutes(app: FastifyInstance) {
   // Initialize auth middleware
@@ -33,6 +36,13 @@ export async function registerOctoRoutes(app: FastifyInstance) {
   const snapshotsService = new SnapshotsService(snapshotsRepository, snapshotsStorage, secretsService);
   const octoService = new OctoService(projectsRepository, snapshotsRepository, undefined, snapshotsService);
   const controller = createOctoController(octoService);
+  const conversationsService = new OctoConversationsService(
+    new OctoConversationsRepository(),
+    projectsRepository,
+    snapshotsRepository,
+    octoService,
+  );
+  const conversationsController = createOctoConversationsController(conversationsService);
 
   // Routes
   app.get('/octo/summary', { preHandler: requireAuth }, controller.summary);
@@ -40,6 +50,17 @@ export async function registerOctoRoutes(app: FastifyInstance) {
   app.get('/octo/graph', { preHandler: requireAuth }, controller.graph);
   app.post('/octo/patches/:patchId/approve', { preHandler: requireAuth }, controller.approvePatch);
   app.post('/octo/patches/:patchId/reject', { preHandler: requireAuth }, controller.rejectPatch);
+
+  app.post('/octo/conversations', { preHandler: requireAuth }, conversationsController.create);
+  app.get('/octo/conversations', { preHandler: requireAuth }, conversationsController.list);
+  app.get('/octo/conversations/:conversationId', { preHandler: requireAuth }, conversationsController.get);
+  app.patch('/octo/conversations/:conversationId', { preHandler: requireAuth }, conversationsController.rename);
+  app.delete('/octo/conversations/:conversationId', { preHandler: requireAuth }, conversationsController.remove);
+  app.post(
+    '/octo/conversations/:conversationId/messages',
+    { preHandler: requireAuth, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    conversationsController.sendMessage,
+  );
 
   // Project & snapshot intelligence (owner-scoped, deterministic)
   app.get('/octo/intelligence/projects', { preHandler: requireAuth }, controller.intelligenceProjects);

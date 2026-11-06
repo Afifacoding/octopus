@@ -70,6 +70,7 @@ export type OctoRequest = {
   projectId?: string | undefined;
   snapshotId?: string | undefined;
   compare?: { baseSnapshotId: string; targetSnapshotId: string } | undefined;
+  throwOnAiFailure?: boolean | undefined;
   userId: string;
 };
 

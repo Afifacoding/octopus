@@ -32,7 +32,7 @@ const { registerOctoRoutes } = await import('./octo.routes.js');
 
 describe('registerOctoRoutes', () => {
   it('wires Secret Vault auto-import into the snapshots service used for OCTOBOT patches', async () => {
-    const app = { get: vi.fn(), post: vi.fn() } as unknown as FastifyInstance;
+    const app = { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } as unknown as FastifyInstance;
 
     await registerOctoRoutes(app);
 
@@ -46,7 +46,7 @@ describe('registerOctoRoutes', () => {
 
   it('registers authenticated intelligence routes and rate-limits snapshot comparison', async () => {
     const get = vi.fn();
-    const app = { get, post: vi.fn() } as unknown as FastifyInstance;
+    const app = { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() } as unknown as FastifyInstance;
 
     await registerOctoRoutes(app);
 
@@ -62,5 +62,37 @@ describe('registerOctoRoutes', () => {
     expect(routes.get('/octo/intelligence/projects/:projectId/compare')?.config).toEqual({
       rateLimit: { max: 20, timeWindow: '1 minute' },
     });
+  });
+
+  it('registers authenticated conversation CRUD and rate-limits message sending', async () => {
+    const get = vi.fn();
+    const post = vi.fn();
+    const patch = vi.fn();
+    const remove = vi.fn();
+    const app = { get, post, patch, delete: remove } as unknown as FastifyInstance;
+
+    await registerOctoRoutes(app);
+
+    const routes = new Map([
+      ...get.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>] as const),
+      ...post.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>] as const),
+      ...patch.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>] as const),
+      ...remove.mock.calls.map((call) => [call[0] as string, call[1] as Record<string, unknown>] as const),
+    ]);
+
+    const conversationPaths = [
+      '/octo/conversations',
+      '/octo/conversations/:conversationId',
+      '/octo/conversations/:conversationId/messages',
+    ];
+    for (const path of conversationPaths) {
+      const route = routes.get(path);
+      expect(route?.preHandler).toBeTypeOf('function');
+    }
+    expect(routes.get('/octo/conversations/:conversationId/messages')?.config).toEqual({
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    });
+    expect(patch.mock.calls.map((call) => call[0])).toContain('/octo/conversations/:conversationId');
+    expect(remove.mock.calls.map((call) => call[0])).toContain('/octo/conversations/:conversationId');
   });
 });

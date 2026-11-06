@@ -8,6 +8,7 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
 enum UserStatus {
   PENDING
   ACTIVE
@@ -82,63 +83,104 @@ enum SecretDetectionStatus {
   IMPORTED
 }
 
+enum OctoConversationType {
+  GENERAL
+  PROJECT
+}
+
+enum OctoConversationMessageRole {
+  USER
+  ASSISTANT
+}
+
 model User {
-  id              String              @id @default(cuid())
-  username        String              @unique
-  email           String              @unique
-  passwordHash    String
-  status          UserStatus          @default(PENDING)
-  emailVerifiedAt DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  otpChallenges   EmailOtpChallenge[]
-  sessions        AuthSession[]
-  auditLogs       AuditLog[]
-  projects        Project[]
+  id                String              @id @default(cuid())
+  username          String              @unique
+  email             String              @unique
+  passwordHash      String
+  status            UserStatus          @default(PENDING)
+  emailVerifiedAt   DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  otpChallenges     EmailOtpChallenge[]
+  sessions          AuthSession[]
+  auditLogs         AuditLog[]
+  projects          Project[]
+  octoConversations OctoConversation[]
 }
 
 model Project {
-  id          String        @id @default(cuid())
-  ownerId     String
-  name        String
-  description String?
-  color       ProjectColor?
-  status      ProjectStatus @default(ACTIVE)
-  archivedAt  DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  snapshots   Snapshot[]
-  secrets     Secret[]
+  id                String             @id @default(cuid())
+  ownerId           String
+  name              String
+  description       String?
+  color             ProjectColor?
+  status            ProjectStatus      @default(ACTIVE)
+  archivedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  snapshots         Snapshot[]
+  secrets           Secret[]
+  octoConversations OctoConversation[]
 
   @@index([ownerId, status, updatedAt(sort: Desc)])
   @@index([ownerId, name])
 }
 
+model OctoConversation {
+  id               String                    @id @default(cuid())
+  userId           String
+  title            String                    @default("New chat")
+  conversationType OctoConversationType
+  projectId        String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project          Project?                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages         OctoConversationMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([userId, conversationType, updatedAt(sort: Desc)])
+  @@index([projectId])
+}
+
+model OctoConversationMessage {
+  id             String                      @id @default(cuid())
+  conversationId String
+  role           OctoConversationMessageRole
+  content        String
+  metadata       Json?
+  createdAt      DateTime                    @default(now())
+  conversation   OctoConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt, id])
+}
+
 model Snapshot {
-  id                  String                @id @default(cuid())
-  projectId           String
-  status              SnapshotStatus        @default(PENDING)
-  captureSource       SnapshotCaptureSource @default(API)
-  clientName          String?
-  clientVersion       String?
-  archiveStorageKey   String?
-  archiveContentType  String?
-  archiveSizeBytes    Int?
-  fileCount           Int?
-  directoryCount      Int?
-  integrityAlgorithm  String?
-  integrityHash       String?
-  failureCode         String?
-  failureReason       String?
-  captureMetadata     Json?
-  processedAt         DateTime?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  project             Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  blueprint           Blueprint?
-  secretDetections    SecretDetection[]
-  sourcedSecrets      Secret[]              @relation("SecretSourceSnapshot")
+  id                 String                @id @default(cuid())
+  projectId          String
+  status             SnapshotStatus        @default(PENDING)
+  captureSource      SnapshotCaptureSource @default(API)
+  clientName         String?
+  clientVersion      String?
+  archiveStorageKey  String?
+  archiveContentType String?
+  archiveSizeBytes   Int?
+  fileCount          Int?
+  directoryCount     Int?
+  integrityAlgorithm String?
+  integrityHash      String?
+  failureCode        String?
+  failureReason      String?
+  captureMetadata    Json?
+  processedAt        DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blueprint          Blueprint?
+  secretDetections   SecretDetection[]
+  sourcedSecrets     Secret[]              @relation("SecretSourceSnapshot")
 
   @@index([projectId, createdAt(sort: Desc)])
   @@index([projectId, status, updatedAt(sort: Desc)])
@@ -169,27 +211,27 @@ model Blueprint {
 }
 
 model Secret {
-  id                 String           @id @default(cuid())
-  projectId          String
-  sourceSnapshotId   String?
-  sourceDetectionId  String?
-  label              String
-  category           SecretCategory
-  confidence         SecretConfidence
-  maskedValue        String
-  encryptedValue     String
-  encryptionIv       String
-  encryptionAuthTag  String
-  encryptionVersion  String           @default("v1")
-  sourceFilePath     String?
-  sourceLineNumber   Int?
-  metadata           Json?
-  lastRevealedAt     DateTime?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  sourceSnapshot     Snapshot?        @relation("SecretSourceSnapshot", fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
-  sourceDetection    SecretDetection? @relation(fields: [sourceDetectionId], references: [id], onDelete: SetNull)
+  id                String           @id @default(cuid())
+  projectId         String
+  sourceSnapshotId  String?
+  sourceDetectionId String?
+  label             String
+  category          SecretCategory
+  confidence        SecretConfidence
+  maskedValue       String
+  encryptedValue    String
+  encryptionIv      String
+  encryptionAuthTag String
+  encryptionVersion String           @default("v1")
+  sourceFilePath    String?
+  sourceLineNumber  Int?
+  metadata          Json?
+  lastRevealedAt    DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  project           Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceSnapshot    Snapshot?        @relation("SecretSourceSnapshot", fields: [sourceSnapshotId], references: [id], onDelete: SetNull)
+  sourceDetection   SecretDetection? @relation(fields: [sourceDetectionId], references: [id], onDelete: SetNull)
 
   @@index([projectId, category, updatedAt(sort: Desc)])
 }

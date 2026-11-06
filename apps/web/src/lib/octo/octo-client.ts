@@ -132,6 +132,45 @@ export type OctoAskRequest = {
   compare?: { baseSnapshotId: string; targetSnapshotId: string };
 };
 
+export type OctoConversation = {
+  id: string;
+  title: string;
+  conversationType: 'GENERAL' | 'PROJECT';
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project: { id: string; name: string } | null;
+};
+
+export type OctoConversationMessage = {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type OctoConversationPage = {
+  conversations: OctoConversation[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+};
+
+export type OctoConversationDetails = OctoConversation & {
+  messages: OctoConversationMessage[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+export type OctoConversationMessageResult = {
+  userMessage: OctoConversationMessage;
+  assistantMessage: OctoConversationMessage;
+  patchProposal?: OctoPatchProposal;
+  conversation: OctoConversation | null;
+};
+
 export type OctoPatchProposal = {
   patchId: string;
   filePath: string;
@@ -165,6 +204,120 @@ export type OctoProjectGraph = {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
+const OCTO_CONVERSATIONS_URL = `${API_BASE_URL}/octo/conversations`;
+
+async function readApiData<T>(response: Response): Promise<T | null> {
+  if (!response.ok) return null;
+  const result = (await response.json()) as { success: boolean; data: T };
+  return result.success ? result.data : null;
+}
+
+export async function createOctoConversation(input: {
+  conversationType: 'GENERAL' | 'PROJECT';
+  projectId?: string;
+  title?: string;
+}): Promise<OctoConversation | null> {
+  try {
+    const response = await fetch(OCTO_CONVERSATIONS_URL, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return await readApiData<OctoConversation>(response);
+  } catch (error) {
+    console.error('Error creating OCTOBOT conversation:', error);
+    return null;
+  }
+}
+
+export async function listOctoConversations(input: {
+  page?: number;
+  pageSize?: number;
+  conversationType?: 'GENERAL' | 'PROJECT';
+} = {}): Promise<OctoConversationPage | null> {
+  try {
+    const url = new URL(OCTO_CONVERSATIONS_URL);
+    if (input.page !== undefined) url.searchParams.set('page', String(input.page));
+    if (input.pageSize !== undefined) url.searchParams.set('pageSize', String(input.pageSize));
+    if (input.conversationType) url.searchParams.set('conversationType', input.conversationType);
+    const response = await fetch(url.toString(), { credentials: 'include' });
+    return await readApiData<OctoConversationPage>(response);
+  } catch (error) {
+    console.error('Error loading OCTOBOT conversations:', error);
+    return null;
+  }
+}
+
+export async function getOctoConversation(
+  conversationId: string,
+  messageLimit = 100,
+  beforeMessageId?: string,
+): Promise<OctoConversationDetails | null> {
+  try {
+    const url = new URL(`${OCTO_CONVERSATIONS_URL}/${encodeURIComponent(conversationId)}`);
+    url.searchParams.set('messageLimit', String(messageLimit));
+    if (beforeMessageId) url.searchParams.set('beforeMessageId', beforeMessageId);
+    const response = await fetch(url.toString(), { credentials: 'include' });
+    return await readApiData<OctoConversationDetails>(response);
+  } catch (error) {
+    console.error('Error loading OCTOBOT conversation:', error);
+    return null;
+  }
+}
+
+export async function renameOctoConversation(conversationId: string, title: string): Promise<OctoConversation | null> {
+  try {
+    const response = await fetch(`${OCTO_CONVERSATIONS_URL}/${encodeURIComponent(conversationId)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    return await readApiData<OctoConversation>(response);
+  } catch (error) {
+    console.error('Error renaming OCTOBOT conversation:', error);
+    return null;
+  }
+}
+
+export async function deleteOctoConversation(conversationId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${OCTO_CONVERSATIONS_URL}/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Error deleting OCTOBOT conversation:', error);
+    return false;
+  }
+}
+
+export async function sendOctoConversationMessage(
+  conversationId: string,
+  input: {
+    content: string;
+    pageContext: OctoPageContext;
+    mode?: OctoAskRequest['mode'];
+    snapshotId?: string;
+    compare?: OctoAskRequest['compare'];
+    images?: string[];
+  },
+): Promise<OctoConversationMessageResult | null> {
+  try {
+    const response = await fetch(`${OCTO_CONVERSATIONS_URL}/${encodeURIComponent(conversationId)}/messages`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return await readApiData<OctoConversationMessageResult>(response);
+  } catch (error) {
+    console.error('Error sending OCTOBOT conversation message:', error);
+    return null;
+  }
+}
 
 export async function getOctoSummary(projectId?: string): Promise<OctoSummary | null> {
   try {

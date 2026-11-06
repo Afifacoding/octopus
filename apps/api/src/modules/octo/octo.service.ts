@@ -145,9 +145,15 @@ export class OctoService {
           patchProposal = parsed.patchProposal;
         }
       } catch {
+        if (request.throwOnAiFailure) {
+          throw new HttpError(503, 'OCTOBOT_AI_UNAVAILABLE', 'OCTOBOT could not reach its configured AI provider');
+        }
         reply = 'OCTOBOT could not reach its configured AI provider. Please try again shortly.';
       }
     } else {
+      if (request.throwOnAiFailure) {
+        throw new HttpError(503, 'OCTOBOT_AI_UNAVAILABLE', 'OCTOBOT needs a configured AI provider for this message');
+      }
       reply = 'OCTOBOT needs a configured AI provider. Set AI_PROVIDER and its matching API key in the API environment to start a conversation.';
     }
 

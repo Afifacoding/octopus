@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   approveOctoPatch,
-  askOcto,
+  createOctoConversation,
+  deleteOctoConversation,
+  getOctoConversation,
   getOctoGraph,
   getOctoSummary,
+  listOctoConversations,
+  renameOctoConversation,
   rejectOctoPatch,
+  sendOctoConversationMessage,
 } from '../lib/octo/octo-client';
 import type {
-  OctoAskRequest,
+  OctoConversation,
+  OctoConversationMessage,
   OctoIntelligencePayload,
   OctoPatchProposal,
   OctoProjectGraph,
@@ -15,16 +21,37 @@ import type {
 } from '../lib/octo/octo-client';
 import { buildCompareSnapshotOptions, defaultComparePair } from '../lib/octo/octo-intelligence';
 import { OctoIntelligenceCard } from '../components/octo/OctoIntelligenceCard';
+import { OctoConversationSidebar } from '../components/octo/OctoConversationSidebar';
 import type { OctoPageContext } from '@octopus/shared';
 
 type Message = {
+  id?: string;
   role: 'user' | 'octo';
   content: string;
   timestamp: Date;
   image?: string;
+  imageAttachment?: boolean;
   patchProposal?: OctoPatchProposal;
   intelligence?: OctoIntelligencePayload;
 };
+
+function isOctoIntelligencePayload(value: unknown): value is OctoIntelligencePayload {
+  if (!value || typeof value !== 'object' || !('kind' in value)) return false;
+  return ['WORKSPACE_STATS', 'PROJECT_SNAPSHOTS', 'SNAPSHOT_COMPARISON'].includes(String(value.kind));
+}
+
+function toUiMessage(message: OctoConversationMessage): Message {
+  const metadata = message.metadata;
+  const intelligence = metadata?.intelligence;
+  return {
+    id: message.id,
+    role: message.role === 'USER' ? 'user' : 'octo',
+    content: message.content,
+    timestamp: new Date(message.createdAt),
+    ...(metadata?.hasImage === true ? { imageAttachment: true } : {}),
+    ...(isOctoIntelligencePayload(intelligence) ? { intelligence } : {}),
+  };
+}
 
 type OctobotMode = 'learn' | 'debug' | 'dsa' | 'code-review' | 'interview' | 'project-assistant';
 
@@ -49,6 +76,14 @@ const QUICK_SUGGESTIONS = [
 
 export function OctoPage() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<OctoConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversationListLoading, setConversationListLoading] = useState(true);
+  const [conversationListError, setConversationListError] = useState<string | null>(null);
+  const [conversationLoading, setConversationLoading] = useState(false);
+  const [conversationHasMore, setConversationHasMore] = useState(false);
+  const [earlierMessagesLoading, setEarlierMessagesLoading] = useState(false);
+  const [isNewChat, setIsNewChat] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,20 +112,75 @@ export function OctoPage() {
   const compareOptions = buildCompareSnapshotOptions(selectedProject?.snapshots || []);
   const canCompare = compareOptions.length >= 2;
 
+  const openConversation = useCallback(async (conversationId: string) => {
+    setActiveConversationId(conversationId);
+    setIsNewChat(false);
+    setMessages([]);
+    setInput('');
+    setAttachedImage(null);
+    setConversationLoading(true);
+    setConversationHasMore(false);
+    setError(null);
+    const conversation = await getOctoConversation(conversationId);
+    if (!conversation) {
+      setError("Couldn't load this conversation. Please try again.");
+      setConversationLoading(false);
+      return;
+    }
+
+    setMessages(conversation.messages.map(toUiMessage));
+    setConversationHasMore(conversation.hasMore);
+    setSelectedProjectId(conversation.conversationType === 'PROJECT' ? conversation.projectId || '' : '');
+    setSelectedSnapshotId('');
+    setConversationLoading(false);
+  }, []);
+
   // Load initial summary
   useEffect(() => {
     const loadSummary = async () => {
       const result = await getOctoSummary();
       setSummary(result);
-      const defaultProject = result?.projects.find((project) => project.snapshots.length > 0) || result?.projects[0];
-      if (defaultProject) {
-        setSelectedProjectId((current) => current || defaultProject.id);
-        setSelectedSnapshotId((current) => current || defaultProject.snapshots[0]?.id || '');
-      }
     };
 
     void loadSummary();
   }, []);
+
+  useEffect(() => {
+    if (!summary || conversationListLoading || activeConversationId || isNewChat || selectedProjectId) return;
+    const defaultProject = summary.projects.find((project) => project.snapshots.length > 0) || summary.projects[0];
+    if (defaultProject) {
+      setSelectedProjectId(defaultProject.id);
+      setSelectedSnapshotId(defaultProject.snapshots[0]?.id || '');
+    }
+  }, [activeConversationId, conversationListLoading, isNewChat, selectedProjectId, summary]);
+
+  useEffect(() => {
+    if (!selectedSnapshotId && selectedProject?.snapshots.length) {
+      setSelectedSnapshotId(selectedProject.snapshots[0]?.id || '');
+    }
+  }, [selectedProject, selectedSnapshotId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadConversations = async () => {
+      const result = await listOctoConversations({ pageSize: 50 });
+      if (cancelled) return;
+      setConversationListLoading(false);
+      if (!result) {
+        setConversationListError("Couldn't load recent chats.");
+        return;
+      }
+      setConversationListError(null);
+      setConversations(result.conversations);
+      const latest = result.conversations[0];
+      if (latest) await openConversation(latest.id);
+    };
+
+    void loadConversations();
+    return () => {
+      cancelled = true;
+    };
+  }, [openConversation]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -98,68 +188,136 @@ export function OctoPage() {
   }, [messages]);
 
   const handleAsk = useCallback(
-    async (question: string, image: string | null = null, compare?: OctoAskRequest['compare']) => {
+    async (
+      question: string,
+      image: string | null = null,
+      compare?: { baseSnapshotId: string; targetSnapshotId: string },
+    ) => {
       if (!question.trim() && !image) return;
       const prompt = question.trim() || 'Please inspect this screenshot and explain the issue.';
-
-      // Add user message
-      const userMessage: Message = {
-        role: 'user',
-        content: prompt,
-        timestamp: new Date(),
-        ...(image ? { image } : {}),
-      };
-
-      setMessages((prev) => [...prev, userMessage]);
-      setInput('');
       setLoading(true);
       setError(null);
 
       try {
-        const response = await askOcto({
-          question: prompt,
+        let conversationId = activeConversationId;
+        if (!conversationId) {
+          const created = await createOctoConversation({
+            conversationType: selectedProjectId ? 'PROJECT' : 'GENERAL',
+            ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
+          });
+          if (!created) {
+            setError("Couldn't start a new conversation. Please try again.");
+            return;
+          }
+          conversationId = created.id;
+          setActiveConversationId(created.id);
+          setIsNewChat(false);
+          setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+        }
+
+        const result = await sendOctoConversationMessage(conversationId, {
+          content: prompt,
           pageContext,
           mode,
           ...(image ? { images: [image] } : {}),
-          ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
           ...(selectedSnapshotId ? { snapshotId: selectedSnapshotId } : {}),
           ...(compare ? { compare } : {}),
-          history: messages.slice(-8).map((message) => ({
-            role: message.role === 'octo' ? 'assistant' : 'user',
-            content: message.content.slice(-8000),
-          })),
         });
 
-        if (!response) {
-          setError("I couldn't process that request. Please try again.");
+        if (!result) {
+          const persisted = await getOctoConversation(conversationId);
+          if (persisted) {
+            setMessages(persisted.messages.map(toUiMessage));
+            setConversationHasMore(persisted.hasMore);
+            setConversations((current) => current.map((item) => persisted.id === item.id ? persisted : item));
+          }
+          setError('OCTOBOT could not complete that message. Your text is preserved; try again when ready.');
           return;
         }
 
-        // Add Octo response
-        const octoMessage: Message = {
-          role: 'octo',
-          content: response.reply,
-          timestamp: new Date(),
-          ...(response.patchProposal ? { patchProposal: response.patchProposal } : {}),
-          ...(response.intelligence ? { intelligence: response.intelligence } : {}),
-        };
-
-        setMessages((prev) => [...prev, octoMessage]);
-        setAttachedImage(null);
-
-        // Update summary with new suggestions
-        if (response.summary) {
-          setSummary(response.summary);
+        const userMessage = toUiMessage(result.userMessage);
+        if (image) userMessage.imageAttachment = true;
+        const assistantMessage = toUiMessage(result.assistantMessage);
+        if (result.patchProposal) assistantMessage.patchProposal = result.patchProposal;
+        setMessages((prev) => [...prev, userMessage, assistantMessage]);
+        const updatedConversation = result.conversation;
+        if (updatedConversation) {
+          setConversations((current) => [
+            updatedConversation,
+            ...current.filter((item) => item.id !== updatedConversation.id),
+          ]);
         }
-      } catch (err) {
-        setError("An error occurred. Please try again.");
-        console.error('Error asking Octo:', err);
+        setInput('');
+        setAttachedImage(null);
+      } catch {
+        setError("OCTOBOT couldn't complete that message. Please try again.");
       } finally {
         setLoading(false);
       }
     },
-    [messages, mode, pageContext, selectedProjectId, selectedSnapshotId],
+    [activeConversationId, mode, pageContext, selectedProjectId, selectedSnapshotId],
   );
+
+  const handleNewChat = () => {
+    setActiveConversationId(null);
+    setMessages([]);
+    setInput('');
+    setAttachedImage(null);
+    setConversationHasMore(false);
+    setIsNewChat(true);
+    setError(null);
+    setGraph(null);
+  };
+
+  const handleLoadEarlierMessages = async () => {
+    const firstMessageId = messages[0]?.id;
+    if (!activeConversationId || !conversationHasMore || !firstMessageId) return;
+    setEarlierMessagesLoading(true);
+    const earlier = await getOctoConversation(activeConversationId, 100, firstMessageId);
+    if (!earlier) {
+      setError("Couldn't load earlier messages.");
+      setEarlierMessagesLoading(false);
+      return;
+    }
+    setMessages((current) => {
+      const currentIds = new Set(current.map((message) => message.id));
+      const older = earlier.messages.map(toUiMessage).filter((message) => !currentIds.has(message.id));
+      return [...older, ...current];
+    });
+    setConversationHasMore(earlier.hasMore);
+    setEarlierMessagesLoading(false);
+  };
+
+  const handleRenameConversation = async (conversation: OctoConversation) => {
+    const title = window.prompt('Rename conversation', conversation.title)?.trim();
+    if (!title || title === conversation.title) return;
+    const updated = await renameOctoConversation(conversation.id, title);
+    if (!updated) {
+      setConversationListError("Couldn't rename this conversation.");
+      return;
+    }
+    setConversationListError(null);
+    setConversations((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+  };
+
+  const handleDeleteConversation = async (conversation: OctoConversation) => {
+    if (!window.confirm(`Delete "${conversation.title}" and its messages? This cannot be undone.`)) return;
+    const deleted = await deleteOctoConversation(conversation.id);
+    if (!deleted) {
+      setConversationListError("Couldn't delete this conversation.");
+      return;
+    }
+    setConversations((current) => current.filter((item) => item.id !== conversation.id));
+    setConversationListError(null);
+    if (activeConversationId === conversation.id) {
+      setActiveConversationId(null);
+      setMessages([]);
+      setConversationHasMore(false);
+      setIsNewChat(true);
+      setSelectedProjectId('');
+      setSelectedSnapshotId('');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -327,13 +485,23 @@ export function OctoPage() {
         <div className="octo-header-tools">
           <label className="octo-select-label">
             Project
-            <select value={selectedProjectId} onChange={(event) => handleProjectChange(event.target.value)}>
+            <select
+              value={selectedProjectId}
+              onChange={(event) => handleProjectChange(event.target.value)}
+              disabled={Boolean(activeConversationId) || loading || conversationLoading}
+              aria-describedby={activeConversationId ? 'octo-conversation-project-context' : undefined}
+            >
               <option value="">General assistant</option>
               {(summary?.projects || []).map((project) => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
             </select>
           </label>
+          {activeConversationId && (
+            <span id="octo-conversation-project-context" className="octo-conversation-context-lock">
+              Context is fixed for this chat
+            </span>
+          )}
           <label className="octo-select-label">
             Snapshot
             <select
@@ -485,7 +653,23 @@ export function OctoPage() {
         </section>
       )}
 
-      {messages.length === 0 && (
+      <div className="octo-conversation-workspace">
+        <OctoConversationSidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          loading={conversationListLoading}
+          error={conversationListError}
+          disabled={loading || conversationLoading}
+          onNewChat={handleNewChat}
+          onOpen={(conversationId) => void openConversation(conversationId)}
+          onRename={(conversation) => void handleRenameConversation(conversation)}
+          onDelete={(conversation) => void handleDeleteConversation(conversation)}
+        />
+        <div className="octo-conversation-main">
+          {conversationLoading && <div className="octo-conversation-loading" role="status">Loading conversation…</div>}
+          {error && <div className="octo-message-error" role="alert"><p>{error}</p></div>}
+
+      {messages.length === 0 && !conversationLoading && (
         <div className="octo-page-welcome">
           <div className="octo-welcome-icon">🐙</div>
           <h2 className="octo-welcome-title">Hi, I'm OCTOBOT</h2>
@@ -526,12 +710,25 @@ export function OctoPage() {
       {messages.length > 0 && (
         <div className="octo-page-chat">
           <div className="octo-messages">
+            {conversationHasMore && (
+              <button
+                type="button"
+                className="octo-load-earlier-button"
+                onClick={() => void handleLoadEarlierMessages()}
+                disabled={earlierMessagesLoading}
+              >
+                {earlierMessagesLoading ? 'Loading earlier messages…' : 'Load earlier messages'}
+              </button>
+            )}
             {messages.map((message, index) => (
               <div key={index} className={`octo-message-container octo-message-${message.role}`}>
                 <div className="octo-message-content">
                   {message.role === 'octo' && <div className="octo-message-avatar">🐙</div>}
                   <div className="octo-message-bubble">
                     {message.image && <img className="octo-message-image" src={message.image} alt="User attachment" />}
+                    {message.imageAttachment && (
+                      <span className="octo-message-attachment-note">Image attachment (not retained in chat history)</span>
+                    )}
                     <p className="octo-message-text">{message.content}</p>
                     {message.intelligence && <OctoIntelligenceCard payload={message.intelligence} />}
                     {message.patchProposal && (
@@ -571,12 +768,6 @@ export function OctoPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="octo-message-error">
-                <p>{error}</p>
               </div>
             )}
 
@@ -640,14 +831,16 @@ export function OctoPage() {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onPaste={handlePaste}
-            disabled={loading}
+            disabled={loading || conversationLoading}
             rows={2}
           />
-          <button type="submit" className="octo-send-button" disabled={loading || (!input.trim() && !attachedImage)}>
+          <button type="submit" className="octo-send-button" disabled={loading || conversationLoading || (!input.trim() && !attachedImage)}>
             <span>Send</span>
           </button>
         </div>
       </form>
+        </div>
+      </div>
     </div>
   );
 }
